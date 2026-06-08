@@ -1,8 +1,8 @@
 openapi: 3.0.3
 info:
-  title: {{info.name}} {{service.name}} API
+  title: Mentor Hub mentor API
   description: |
-    A Flask + MongoDB API for the {{service.name}} service.
+    A Flask + MongoDB API for the mentor service.
     
     ## Authentication
     All endpoints (except `/metrics`) require JWT authentication via the `Authorization` header:
@@ -14,13 +14,13 @@ info:
     test token from `test/e2e/e2e_auth.py` that matches your `JWT_SECRET` and expected claims.
   version: 0.1.0
   contact:
-    name: {{org.name}}
-    email: {{org.email}}
+    name: Mentor Forge
+    email: info@agile-learning-institute.com
   license:
     name: Apache-2.0
 
 servers:
-  - url: http://localhost:{{repo.port}}
+  - url: http://localhost:8391
     description: Local development server
 
 tags:
@@ -28,22 +28,18 @@ tags:
     description: Configuration endpoints
   - name: Metrics
     description: Monitoring endpoints
-{% for domain in service.data_domains.controls -%}
-{{ '  ' -}}
-- name: {{domain}}
-    description: {{domain}} operations (create, read, update)
-{% endfor -%}
-{% for domain in service.data_domains.creates -%}
-{{ '  ' -}}
-- name: {{domain}}
-    description: {{domain}} operations (create, read)
-{% endfor -%}
-{% for domain in service.data_domains.consumes -%}
-{{ '  ' -}}
-- name: {{domain}}
-    description: {{domain}} operations (read-only)
-{% endfor -%}
-
+  - name: Resource
+    description: Resource operations (create, read, update)
+  - name: Path
+    description: Path operations (create, read, update)
+  - name: Plan
+    description: Plan operations (create, read, update)
+  - name: Encounter
+    description: Encounter operations (create, read, update)
+  - name: Event
+    description: Event operations (create, read)
+  - name: Profile
+    description: Profile operations (read-only)
 paths:
   /api/config:
     get:
@@ -98,15 +94,13 @@ paths:
               schema:
                 type: string
 
-{% for domain in service.data_domains.controls -%}
-{{ '  ' -}}
-/api/{{domain}}:
+  /api/Resource:
     get:
       tags:
-        - {{domain}}
-      summary: Get all {{domain}} documents
-      description: Retrieve infinite scroll batch of sorted, filtered {{domain}} documents
-      operationId: get{{domain}}s
+        - Resource
+      summary: Get all Resource documents
+      description: Retrieve infinite scroll batch of sorted, filtered Resource documents
+      operationId: getResources
       security:
         - bearerAuth: []
       parameters:
@@ -116,7 +110,7 @@ paths:
           description: Optional name filter (supports partial matches, case-insensitive)
           schema:
             type: string
-            example: my-{{domain}}
+            example: my-Resource
         - name: after_id
           in: query
           required: false
@@ -188,10 +182,10 @@ paths:
           $ref: '#/components/responses/InternalError'
     post:
       tags:
-        - {{domain}}
-      summary: Create a new {{domain}} document
-      description: Create a new {{domain}} document (requires staff or admin role)
-      operationId: create{{domain}}
+        - Resource
+      summary: Create a new Resource document
+      description: Create a new Resource document (requires staff or admin role)
+      operationId: createResource
       security:
         - bearerAuth: []
       requestBody:
@@ -199,10 +193,10 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/{{domain}}Input'
+              $ref: '#/components/schemas/ResourceInput'
       responses:
         '201':
-          description: {{domain}} created successfully
+          description: Resource created successfully
           content:
             application/json:
               schema:
@@ -218,31 +212,31 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
-  /api/{{domain}}/{{'{'}}{{domain}}Id{{'}'}}:
+  /api/Resource/{ResourceId}:
     get:
       tags:
-        - {{domain}}
-      summary: Get {{domain}} by {{domain}}Id
-      description: Retrieve a specific {{domain}} document by its {{domain}}Id
-      operationId: get{{domain}}
+        - Resource
+      summary: Get Resource by ResourceId
+      description: Retrieve a specific Resource document by its ResourceId
+      operationId: getResource
       security:
         - bearerAuth: []
       parameters:
-        - name: {{domain}}Id
+        - name: ResourceId
           in: path
           required: true
-          description: The {{domain}} ID (MongoDB ObjectId)
+          description: The Resource ID (MongoDB ObjectId)
           schema:
             type: string
             pattern: '^[0-9a-fA-F]{24}$'
             example: 507f1f77bcf86cd799439011
       responses:
         '200':
-          description: Successfully retrieved {{domain}}
+          description: Successfully retrieved Resource
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/{{domain}}'
+                $ref: '#/components/schemas/Resource'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
@@ -251,17 +245,17 @@ paths:
           $ref: '#/components/responses/InternalError'
     patch:
       tags:
-        - {{domain}}
-      summary: Update {{domain}} document
-      description: Update a {{domain}} document (requires admin role). Cannot update _id, created, or saved fields.
-      operationId: update{{domain}}
+        - Resource
+      summary: Update Resource document
+      description: Update a Resource document (requires admin role). Cannot update _id, created, or saved fields.
+      operationId: updateResource
       security:
         - bearerAuth: []
       parameters:
-        - name: {{domain}}Id
+        - name: ResourceId
           in: path
           required: true
-          description: The {{domain}} ID (MongoDB ObjectId)
+          description: The Resource ID (MongoDB ObjectId)
           schema:
             type: string
             pattern: '^[0-9a-fA-F]{24}$'
@@ -271,14 +265,14 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/{{domain}}Update'
+              $ref: '#/components/schemas/ResourceUpdate'
       responses:
         '200':
-          description: {{domain}} updated successfully
+          description: Resource updated successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/{{domain}}'
+                $ref: '#/components/schemas/Resource'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -287,17 +281,13 @@ paths:
           $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalError'
-{% endfor -%}
-
-{% for domain in service.data_domains.creates -%}
-{{ '  ' -}}
-/api/{{domain}}:
+  /api/Path:
     get:
       tags:
-        - {{domain}}
-      summary: Get all {{domain}} documents
-      description: Retrieve infinite scroll batch of sorted, filtered {{domain}} documents
-      operationId: get{{domain}}s
+        - Path
+      summary: Get all Path documents
+      description: Retrieve infinite scroll batch of sorted, filtered Path documents
+      operationId: getPaths
       security:
         - bearerAuth: []
       parameters:
@@ -307,7 +297,568 @@ paths:
           description: Optional name filter (supports partial matches, case-insensitive)
           schema:
             type: string
-            example: my-{{domain}}
+            example: my-Path
+        - name: after_id
+          in: query
+          required: false
+          description: Cursor for infinite scroll (ID of last item from previous batch, omit for first request)
+          schema:
+            type: string
+            pattern: '^[0-9a-fA-F]{24}$'
+            example: 507f1f77bcf86cd799439011
+        - name: limit
+          in: query
+          required: false
+          description: Items per page (max 100)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 10
+            example: 10
+        - name: sort_by
+          in: query
+          required: false
+          description: Field to sort by (name, description, status, created.at_time, saved.at_time)
+          schema:
+            type: string
+            default: name
+            example: name
+        - name: order
+          in: query
+          required: false
+          description: Sort order
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: asc
+            example: asc
+      responses:
+        '200':
+          description: Successfully retrieved controls
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - items
+                  - limit
+                  - has_more
+                  - next_cursor
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Control'
+                  limit:
+                    type: integer
+                    example: 10
+                  has_more:
+                    type: boolean
+                    example: true
+                  next_cursor:
+                    type: string
+                    nullable: true
+                    pattern: '^[0-9a-fA-F]{24}$'
+                    example: 507f1f77bcf86cd799439011
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      tags:
+        - Path
+      summary: Create a new Path document
+      description: Create a new Path document (requires staff or admin role)
+      operationId: createPath
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PathInput'
+      responses:
+        '201':
+          description: Path created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  _id:
+                    type: string
+                    pattern: '^[0-9a-fA-F]{24}$'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/Path/{PathId}:
+    get:
+      tags:
+        - Path
+      summary: Get Path by PathId
+      description: Retrieve a specific Path document by its PathId
+      operationId: getPath
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: PathId
+          in: path
+          required: true
+          description: The Path ID (MongoDB ObjectId)
+          schema:
+            type: string
+            pattern: '^[0-9a-fA-F]{24}$'
+            example: 507f1f77bcf86cd799439011
+      responses:
+        '200':
+          description: Successfully retrieved Path
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Path'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    patch:
+      tags:
+        - Path
+      summary: Update Path document
+      description: Update a Path document (requires admin role). Cannot update _id, created, or saved fields.
+      operationId: updatePath
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: PathId
+          in: path
+          required: true
+          description: The Path ID (MongoDB ObjectId)
+          schema:
+            type: string
+            pattern: '^[0-9a-fA-F]{24}$'
+            example: 507f1f77bcf86cd799439011
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PathUpdate'
+      responses:
+        '200':
+          description: Path updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Path'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/Plan:
+    get:
+      tags:
+        - Plan
+      summary: Get all Plan documents
+      description: Retrieve infinite scroll batch of sorted, filtered Plan documents
+      operationId: getPlans
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: name
+          in: query
+          required: false
+          description: Optional name filter (supports partial matches, case-insensitive)
+          schema:
+            type: string
+            example: my-Plan
+        - name: after_id
+          in: query
+          required: false
+          description: Cursor for infinite scroll (ID of last item from previous batch, omit for first request)
+          schema:
+            type: string
+            pattern: '^[0-9a-fA-F]{24}$'
+            example: 507f1f77bcf86cd799439011
+        - name: limit
+          in: query
+          required: false
+          description: Items per page (max 100)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 10
+            example: 10
+        - name: sort_by
+          in: query
+          required: false
+          description: Field to sort by (name, description, status, created.at_time, saved.at_time)
+          schema:
+            type: string
+            default: name
+            example: name
+        - name: order
+          in: query
+          required: false
+          description: Sort order
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: asc
+            example: asc
+      responses:
+        '200':
+          description: Successfully retrieved controls
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - items
+                  - limit
+                  - has_more
+                  - next_cursor
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Control'
+                  limit:
+                    type: integer
+                    example: 10
+                  has_more:
+                    type: boolean
+                    example: true
+                  next_cursor:
+                    type: string
+                    nullable: true
+                    pattern: '^[0-9a-fA-F]{24}$'
+                    example: 507f1f77bcf86cd799439011
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      tags:
+        - Plan
+      summary: Create a new Plan document
+      description: Create a new Plan document (requires staff or admin role)
+      operationId: createPlan
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlanInput'
+      responses:
+        '201':
+          description: Plan created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  _id:
+                    type: string
+                    pattern: '^[0-9a-fA-F]{24}$'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/Plan/{PlanId}:
+    get:
+      tags:
+        - Plan
+      summary: Get Plan by PlanId
+      description: Retrieve a specific Plan document by its PlanId
+      operationId: getPlan
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: PlanId
+          in: path
+          required: true
+          description: The Plan ID (MongoDB ObjectId)
+          schema:
+            type: string
+            pattern: '^[0-9a-fA-F]{24}$'
+            example: 507f1f77bcf86cd799439011
+      responses:
+        '200':
+          description: Successfully retrieved Plan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Plan'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    patch:
+      tags:
+        - Plan
+      summary: Update Plan document
+      description: Update a Plan document (requires admin role). Cannot update _id, created, or saved fields.
+      operationId: updatePlan
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: PlanId
+          in: path
+          required: true
+          description: The Plan ID (MongoDB ObjectId)
+          schema:
+            type: string
+            pattern: '^[0-9a-fA-F]{24}$'
+            example: 507f1f77bcf86cd799439011
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlanUpdate'
+      responses:
+        '200':
+          description: Plan updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Plan'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/Encounter:
+    get:
+      tags:
+        - Encounter
+      summary: Get all Encounter documents
+      description: Retrieve infinite scroll batch of sorted, filtered Encounter documents
+      operationId: getEncounters
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: name
+          in: query
+          required: false
+          description: Optional name filter (supports partial matches, case-insensitive)
+          schema:
+            type: string
+            example: my-Encounter
+        - name: after_id
+          in: query
+          required: false
+          description: Cursor for infinite scroll (ID of last item from previous batch, omit for first request)
+          schema:
+            type: string
+            pattern: '^[0-9a-fA-F]{24}$'
+            example: 507f1f77bcf86cd799439011
+        - name: limit
+          in: query
+          required: false
+          description: Items per page (max 100)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 10
+            example: 10
+        - name: sort_by
+          in: query
+          required: false
+          description: Field to sort by (name, description, status, created.at_time, saved.at_time)
+          schema:
+            type: string
+            default: name
+            example: name
+        - name: order
+          in: query
+          required: false
+          description: Sort order
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: asc
+            example: asc
+      responses:
+        '200':
+          description: Successfully retrieved controls
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - items
+                  - limit
+                  - has_more
+                  - next_cursor
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Control'
+                  limit:
+                    type: integer
+                    example: 10
+                  has_more:
+                    type: boolean
+                    example: true
+                  next_cursor:
+                    type: string
+                    nullable: true
+                    pattern: '^[0-9a-fA-F]{24}$'
+                    example: 507f1f77bcf86cd799439011
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      tags:
+        - Encounter
+      summary: Create a new Encounter document
+      description: Create a new Encounter document (requires staff or admin role)
+      operationId: createEncounter
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EncounterInput'
+      responses:
+        '201':
+          description: Encounter created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  _id:
+                    type: string
+                    pattern: '^[0-9a-fA-F]{24}$'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/Encounter/{EncounterId}:
+    get:
+      tags:
+        - Encounter
+      summary: Get Encounter by EncounterId
+      description: Retrieve a specific Encounter document by its EncounterId
+      operationId: getEncounter
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: EncounterId
+          in: path
+          required: true
+          description: The Encounter ID (MongoDB ObjectId)
+          schema:
+            type: string
+            pattern: '^[0-9a-fA-F]{24}$'
+            example: 507f1f77bcf86cd799439011
+      responses:
+        '200':
+          description: Successfully retrieved Encounter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Encounter'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    patch:
+      tags:
+        - Encounter
+      summary: Update Encounter document
+      description: Update a Encounter document (requires admin role). Cannot update _id, created, or saved fields.
+      operationId: updateEncounter
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: EncounterId
+          in: path
+          required: true
+          description: The Encounter ID (MongoDB ObjectId)
+          schema:
+            type: string
+            pattern: '^[0-9a-fA-F]{24}$'
+            example: 507f1f77bcf86cd799439011
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EncounterUpdate'
+      responses:
+        '200':
+          description: Encounter updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Encounter'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/Event:
+    get:
+      tags:
+        - Event
+      summary: Get all Event documents
+      description: Retrieve infinite scroll batch of sorted, filtered Event documents
+      operationId: getEvents
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: name
+          in: query
+          required: false
+          description: Optional name filter (supports partial matches, case-insensitive)
+          schema:
+            type: string
+            example: my-Event
         - name: after_id
           in: query
           required: false
@@ -345,7 +896,7 @@ paths:
             example: asc
       responses:
         '200':
-          description: Successfully retrieved {{domain}}s
+          description: Successfully retrieved Events
           content:
             application/json:
               schema:
@@ -359,7 +910,7 @@ paths:
                   items:
                     type: array
                     items:
-                      $ref: '#/components/schemas/{{domain}}'
+                      $ref: '#/components/schemas/Event'
                   limit:
                     type: integer
                     example: 10
@@ -379,10 +930,10 @@ paths:
           $ref: '#/components/responses/InternalError'
     post:
       tags:
-        - {{domain}}
-      summary: Create a new {{domain}} document
-      description: Create a new {{domain}} document (requires staff or admin role)
-      operationId: create{{domain}}
+        - Event
+      summary: Create a new Event document
+      description: Create a new Event document (requires staff or admin role)
+      operationId: createEvent
       security:
         - bearerAuth: []
       requestBody:
@@ -390,10 +941,10 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/{{domain}}Input'
+              $ref: '#/components/schemas/EventInput'
       responses:
         '201':
-          description: {{domain}} created successfully
+          description: Event created successfully
           content:
             application/json:
               schema:
@@ -409,48 +960,44 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
-  /api/{{domain}}/{{'{'}}{{domain}}Id{{'}'}}:
+  /api/Event/{EventId}:
     get:
       tags:
-        - {{domain}}
-      summary: Get {{domain}} by {{domain}}Id
-      description: Retrieve a specific {{domain}} document by its {{domain}}Id
-      operationId: get{{domain}}
+        - Event
+      summary: Get Event by EventId
+      description: Retrieve a specific Event document by its EventId
+      operationId: getEvent
       security:
         - bearerAuth: []
       parameters:
-        - name: {{domain}}Id
+        - name: EventId
           in: path
           required: true
-          description: The {{domain}} ID (MongoDB ObjectId)
+          description: The Event ID (MongoDB ObjectId)
           schema:
             type: string
             pattern: '^[0-9a-fA-F]{24}$'
             example: 507f1f77bcf86cd799439011
       responses:
         '200':
-          description: Successfully retrieved {{domain}}
+          description: Successfully retrieved Event
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/{{domain}}'
+                $ref: '#/components/schemas/Event'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalError'
-{% endfor -%}
-
-{% for domain in service.data_domains.consumes -%}
-{{ '  ' -}}
-  /api/{{domain}}:
+  /api/Profile:
     get:
       tags:
-        - {{domain}}
-      summary: Get all {{domain}} documents
-      description: Retrieve infinite scroll batch of sorted, filtered {{domain}} documents (read-only)
-      operationId: get{{domain}}s
+        - Profile
+      summary: Get all Profile documents
+      description: Retrieve infinite scroll batch of sorted, filtered Profile documents (read-only)
+      operationId: getProfiles
       security:
         - bearerAuth: []
       parameters:
@@ -460,7 +1007,7 @@ paths:
           description: Optional name filter (supports partial matches, case-insensitive)
           schema:
             type: string
-            example: my-{{domain}}
+            example: my-Profile
         - name: after_id
           in: query
           required: false
@@ -498,7 +1045,7 @@ paths:
             example: asc
       responses:
         '200':
-          description: Successfully retrieved {{domain}}s
+          description: Successfully retrieved Profiles
           content:
             application/json:
               schema:
@@ -512,7 +1059,7 @@ paths:
                   items:
                     type: array
                     items:
-                      $ref: '#/components/schemas/{{domain}}'
+                      $ref: '#/components/schemas/Profile'
                   limit:
                     type: integer
                     example: 10
@@ -530,43 +1077,37 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '500':
           $ref: '#/components/responses/InternalError'
-{% endfor -%}
-
-{% for domain in service.data_domains.consumes -%}
-{{ '  ' -}}
-/api/{{domain}}/{{ '{'}}{{domain}}Id}:
+  /api/Profile/{ProfileId}:
     get:
       tags:
-        - {{domain}}
-      summary: Get {{domain}} by {{domain}}Id
-      description: Retrieve a specific {{domain}} document by its {{domain}}Id (read-only)
-      operationId: get{{domain}}
+        - Profile
+      summary: Get Profile by ProfileId
+      description: Retrieve a specific Profile document by its ProfileId (read-only)
+      operationId: getProfile
       security:
         - bearerAuth: []
       parameters:
-        - name: {{domain}}Id
+        - name: ProfileId
           in: path
           required: true
-          description: The {{domain}} ID (MongoDB ObjectId)
+          description: The Profile ID (MongoDB ObjectId)
           schema:
             type: string
             pattern: '^[0-9a-fA-F]{24}$'
             example: 507f1f77bcf86cd799439011
       responses:
         '200':
-          description: Successfully retrieved {{domain}}
+          description: Successfully retrieved Profile
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/{{domain}}'
+                $ref: '#/components/schemas/Profile'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalError'
-{% endfor -%}
-
 components:
   securitySchemes:
     bearerAuth:
@@ -662,11 +1203,9 @@ components:
           pattern: '^[^\s]{1,40}$'
           example: corr-abc123
 
-{% for domain in service.data_domains.controls -%}
-{{ '    ' -}}
-{{domain}}:
+    Resource:
       type: object
-      description: {{domain}} domain document
+      description: Resource domain document
       additionalProperties: false
       required:
         - _id
@@ -681,17 +1220,17 @@ components:
           example: 507f1f77bcf86cd799439011
         name:
           type: string
-          description: {{domain}} name
+          description: Resource name
           pattern: '^[^\s]{1,40}$'
-          example: my-{{domain}}
+          example: my-Resource
         description:
           type: string
-          description: {{domain}} description
+          description: Resource description
           pattern: '^[^\t\n]{0,255}$'
-          example: A sample {{domain}} document
+          example: A sample Resource document
         status:
           type: string
-          description: {{domain}} status
+          description: Resource status
           enum:
             - active
             - archived
@@ -701,52 +1240,280 @@ components:
         saved:
           $ref: '#/components/schemas/Breadcrumb'
 
-    {{domain}}Input:
+    ResourceInput:
       type: object
-      description: Input for creating a {{domain}} document
+      description: Input for creating a Resource document
       properties:
         name:
           type: string
-          description: {{domain}} name
+          description: Resource name
           pattern: '^[^\s]{1,40}$'
-          example: my-{{domain}}
+          example: my-Resource
         description:
           type: string
-          description: {{domain}} description
+          description: Resource description
           pattern: '^[^\t\n]{0,255}$'
-          example: A sample {{domain}} document
+          example: A sample Resource document
         status:
           type: string
-          description: {{domain}} status
+          description: Resource status
           enum:
             - active
             - archived
           example: active
 
-    {{domain}}Update:
+    ResourceUpdate:
       type: object
-      description: Fields to update in a {{domain}} document (cannot include _id, created, saved)
+      description: Fields to update in a Resource document (cannot include _id, created, saved)
       properties:
         name:
           type: string
-          description: {{domain}} name
+          description: Resource name
           pattern: '^[^\s]{1,40}$'
         description:
           type: string
-          description: {{domain}} description
+          description: Resource description
           pattern: '^[^\t\n]{0,255}$'
         status:
           type: string
-          description: {{domain}} status
+          description: Resource status
           enum:
             - active
             - archived
-{% endfor -%}
-{% for domain in service.data_domains.creates -%}
-{{ '    ' -}}
-{{domain}}:
+    Path:
       type: object
-      description: {{domain}} domain document
+      description: Path domain document
+      additionalProperties: false
+      required:
+        - _id
+        - name
+        - created
+        - saved
+      properties:
+        _id:
+          type: string
+          description: MongoDB document ID
+          pattern: '^[0-9a-fA-F]{24}$'
+          example: 507f1f77bcf86cd799439011
+        name:
+          type: string
+          description: Path name
+          pattern: '^[^\s]{1,40}$'
+          example: my-Path
+        description:
+          type: string
+          description: Path description
+          pattern: '^[^\t\n]{0,255}$'
+          example: A sample Path document
+        status:
+          type: string
+          description: Path status
+          enum:
+            - active
+            - archived
+          example: active
+        created:
+          $ref: '#/components/schemas/Breadcrumb'
+        saved:
+          $ref: '#/components/schemas/Breadcrumb'
+
+    PathInput:
+      type: object
+      description: Input for creating a Path document
+      properties:
+        name:
+          type: string
+          description: Path name
+          pattern: '^[^\s]{1,40}$'
+          example: my-Path
+        description:
+          type: string
+          description: Path description
+          pattern: '^[^\t\n]{0,255}$'
+          example: A sample Path document
+        status:
+          type: string
+          description: Path status
+          enum:
+            - active
+            - archived
+          example: active
+
+    PathUpdate:
+      type: object
+      description: Fields to update in a Path document (cannot include _id, created, saved)
+      properties:
+        name:
+          type: string
+          description: Path name
+          pattern: '^[^\s]{1,40}$'
+        description:
+          type: string
+          description: Path description
+          pattern: '^[^\t\n]{0,255}$'
+        status:
+          type: string
+          description: Path status
+          enum:
+            - active
+            - archived
+    Plan:
+      type: object
+      description: Plan domain document
+      additionalProperties: false
+      required:
+        - _id
+        - name
+        - created
+        - saved
+      properties:
+        _id:
+          type: string
+          description: MongoDB document ID
+          pattern: '^[0-9a-fA-F]{24}$'
+          example: 507f1f77bcf86cd799439011
+        name:
+          type: string
+          description: Plan name
+          pattern: '^[^\s]{1,40}$'
+          example: my-Plan
+        description:
+          type: string
+          description: Plan description
+          pattern: '^[^\t\n]{0,255}$'
+          example: A sample Plan document
+        status:
+          type: string
+          description: Plan status
+          enum:
+            - active
+            - archived
+          example: active
+        created:
+          $ref: '#/components/schemas/Breadcrumb'
+        saved:
+          $ref: '#/components/schemas/Breadcrumb'
+
+    PlanInput:
+      type: object
+      description: Input for creating a Plan document
+      properties:
+        name:
+          type: string
+          description: Plan name
+          pattern: '^[^\s]{1,40}$'
+          example: my-Plan
+        description:
+          type: string
+          description: Plan description
+          pattern: '^[^\t\n]{0,255}$'
+          example: A sample Plan document
+        status:
+          type: string
+          description: Plan status
+          enum:
+            - active
+            - archived
+          example: active
+
+    PlanUpdate:
+      type: object
+      description: Fields to update in a Plan document (cannot include _id, created, saved)
+      properties:
+        name:
+          type: string
+          description: Plan name
+          pattern: '^[^\s]{1,40}$'
+        description:
+          type: string
+          description: Plan description
+          pattern: '^[^\t\n]{0,255}$'
+        status:
+          type: string
+          description: Plan status
+          enum:
+            - active
+            - archived
+    Encounter:
+      type: object
+      description: Encounter domain document
+      additionalProperties: false
+      required:
+        - _id
+        - name
+        - created
+        - saved
+      properties:
+        _id:
+          type: string
+          description: MongoDB document ID
+          pattern: '^[0-9a-fA-F]{24}$'
+          example: 507f1f77bcf86cd799439011
+        name:
+          type: string
+          description: Encounter name
+          pattern: '^[^\s]{1,40}$'
+          example: my-Encounter
+        description:
+          type: string
+          description: Encounter description
+          pattern: '^[^\t\n]{0,255}$'
+          example: A sample Encounter document
+        status:
+          type: string
+          description: Encounter status
+          enum:
+            - active
+            - archived
+          example: active
+        created:
+          $ref: '#/components/schemas/Breadcrumb'
+        saved:
+          $ref: '#/components/schemas/Breadcrumb'
+
+    EncounterInput:
+      type: object
+      description: Input for creating a Encounter document
+      properties:
+        name:
+          type: string
+          description: Encounter name
+          pattern: '^[^\s]{1,40}$'
+          example: my-Encounter
+        description:
+          type: string
+          description: Encounter description
+          pattern: '^[^\t\n]{0,255}$'
+          example: A sample Encounter document
+        status:
+          type: string
+          description: Encounter status
+          enum:
+            - active
+            - archived
+          example: active
+
+    EncounterUpdate:
+      type: object
+      description: Fields to update in a Encounter document (cannot include _id, created, saved)
+      properties:
+        name:
+          type: string
+          description: Encounter name
+          pattern: '^[^\s]{1,40}$'
+        description:
+          type: string
+          description: Encounter description
+          pattern: '^[^\t\n]{0,255}$'
+        status:
+          type: string
+          description: Encounter status
+          enum:
+            - active
+            - archived
+    Event:
+      type: object
+      description: Event domain document
       additionalProperties: false
       required:
         - _id
@@ -760,45 +1527,42 @@ components:
           example: 507f1f77bcf86cd799439011
         name:
           type: string
-          description: {{domain}} name
+          description: Event name
           pattern: '^[^\s]{1,40}$'
-          example: my-{{domain}}
+          example: my-Event
         description:
           type: string
-          description: {{domain}} description
+          description: Event description
           pattern: '^[^\t\n]{0,255}$'
-          example: A sample {{domain}} document
+          example: A sample Event document
         status:
           type: string
-          description: {{domain}} status
+          description: Event status
           example: active
         created:
           $ref: '#/components/schemas/Breadcrumb'
 
-    {{domain}}Input:
+    EventInput:
       type: object
-      description: Input for creating a {{domain}} document
+      description: Input for creating a Event document
       properties:
         name:
           type: string
-          description: {{domain}} name
+          description: Event name
           pattern: '^[^\s]{1,40}$'
-          example: my-{{domain}}
+          example: my-Event
         description:
           type: string
-          description: {{domain}} description
+          description: Event description
           pattern: '^[^\t\n]{0,255}$'
-          example: A sample {{domain}} document
+          example: A sample Event document
         status:
           type: string
-          description: {{domain}} status
+          description: Event status
           example: active
-{% endfor -%}
-{% for domain in service.data_domains.consumes -%}
-{{ '    ' -}}
-{{domain}}:
+    Profile:
       type: object
-      description: {{domain}} domain document (read-only)
+      description: Profile domain document (read-only)
       additionalProperties: false
       required:
         - _id
@@ -811,21 +1575,19 @@ components:
           example: 507f1f77bcf86cd799439011
         name:
           type: string
-          description: {{domain}} name
+          description: Profile name
           pattern: '^[^\s]{1,40}$'
-          example: my-{{domain}}
+          example: my-Profile
         description:
           type: string
-          description: {{domain}} description
+          description: Profile description
           pattern: '^[^\t\n]{0,255}$'
-          example: A sample {{domain}} document
+          example: A sample Profile document
         status:
           type: string
-          description: {{domain}} status
+          description: Profile status
           example: active
-{% endfor -%}
-{{ '    ' -}}
-InfiniteScrollResponse:
+    InfiniteScrollResponse:
       type: object
       description: Infinite scroll pagination response
       required:

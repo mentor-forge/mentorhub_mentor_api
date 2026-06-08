@@ -24,7 +24,7 @@ RUN pipenv run build
 # Stage 2: Production - no git, no token; copy installed packages from build
 FROM python:3.12-slim
 
-LABEL org.opencontainers.image.source="{{org.git_host}}/{{org.git_org}}/{{info.slug}}_{{service.name}}_api"
+LABEL org.opencontainers.image.source="https://github.com/mentor-forge/mentorhub_mentor_api"
 
 WORKDIR /opt/api_server
 
@@ -37,6 +37,6 @@ ENV PYTHONPATH=/opt/api_server
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
-EXPOSE {{repo.port}}
+EXPOSE 8391
 
-CMD exec python -m gunicorn --bind 0.0.0.0:{{repo.port}} src.server:app
+CMD exec python -m gunicorn --bind 0.0.0.0:8391 src.server:app

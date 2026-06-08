@@ -41,4 +41,3 @@ def get_auth_token() -> str:
     if isinstance(token, bytes):
         return token.decode("ascii")
     return token
-
