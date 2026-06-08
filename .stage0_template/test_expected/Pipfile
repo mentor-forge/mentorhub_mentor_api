@@ -1,0 +1,41 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+flask = "*"
+pymongo = "*"
+pyjwt = "*"
+# Must be git: PyPI package "api-utils" is unrelated; using "*" pulls the wrong library and breaks Config/auth.
+api-utils = {editable = false, git = "https://github.com/agile-learning-institute/mentorhub_api_utils.git", ref = "main"}
+
+[dev-packages]
+pytest = "*"
+pytest-cov = "*"
+black = "*"
+setuptools = "*"
+build = "*"
+twine = "*"
+requests = "*"
+
+[scripts]
+build = "python -m compileall -b -f -q src/"
+dev = "sh -c 'export JWT_SECRET=\"${JWT_SECRET:-local-dev-jwt-secret-fixed}\"; export JWT_ISSUER=\"${JWT_ISSUER:-dev-idp}\"; export JWT_AUDIENCE=\"${JWT_AUDIENCE:-dev-api}\"; export JWT_ALGORITHM=\"${JWT_ALGORITHM:-HS256}\"; PYTHONPATH=. python src/server.py'"
+test = "sh -c 'PYTHONPATH=. pytest test/ -v -m \"not e2e\"'"
+e2e = "sh -c 'export JWT_SECRET=\"${JWT_SECRET:-local-dev-jwt-secret-fixed}\"; export JWT_ISSUER=\"${JWT_ISSUER:-dev-idp}\"; export JWT_AUDIENCE=\"${JWT_AUDIENCE:-dev-api}\"; export JWT_ALGORITHM=\"${JWT_ALGORITHM:-HS256}\"; PYTHONPATH=. pytest test/ -m e2e -v'"
+coverage = "sh -c 'PYTHONPATH=. pytest test/ -v -m \"not e2e\" --cov=src --cov-report=term-missing --cov-report=html'"
+lint = "black --check src test"
+format = "black src test"
+container = "sh -c 'docker build --build-arg GITHUB_TOKEN=$GITHUB_TOKEN -t ghcr.io/agile-learning-institute/mentorhub_sample_api:latest .'"
+push = "sh -c 'docker push ghcr.io/agile-learning-institute/mentorhub_sample_api:latest'"
+build-publish = "sh -c 'pipenv install --dev && pipenv run container && pipenv run push'"
+build-package = "sh -c 'pipenv install --dev && pipenv run container'"
+publish-package = "sh -c 'pipenv run push'"
+delete-package = "sh -c 'gh api -X DELETE /orgs/agile-learning-institute/packages/container/mentorhub_sample_api'"
+db = "sh -c 'mh down && mh up mongodb'"
+api = "sh -c 'mh down && mh up sample-api'"
+service = "sh -c 'mh down && mh up sample'"
+
+[requires]
+python_version = "3.12"

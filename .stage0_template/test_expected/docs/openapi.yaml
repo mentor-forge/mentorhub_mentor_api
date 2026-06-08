@@ -1,0 +1,818 @@
+openapi: 3.0.3
+info:
+  title: Mentor Hub sample API
+  description: |
+    A Flask + MongoDB API for the sample service.
+    
+    ## Authentication
+    All endpoints (except `/metrics`) require JWT authentication via the `Authorization` header:
+    ```
+    Authorization: Bearer <token>
+    ```
+    
+    For local development, obtain a JWT from the Developer Edition welcome / IdP flow, or use a
+    test token from `test/e2e/e2e_auth.py` that matches your `JWT_SECRET` and expected claims.
+  version: 0.1.0
+  contact:
+    name: Agile Learning Institute
+    email: info@agile-learning-institute.com
+  license:
+    name: Apache-2.0
+
+servers:
+  - url: http://localhost:8387
+    description: Local development server
+
+tags:
+  - name: Config
+    description: Configuration endpoints
+  - name: Metrics
+    description: Monitoring endpoints
+  - name: Control
+    description: Control operations (create, read, update)
+  - name: Create
+    description: Create operations (create, read)
+  - name: Consume
+    description: Consume operations (read-only)
+paths:
+  /api/config:
+    get:
+      tags:
+        - Config
+      summary: Get configuration
+      description: Returns the current configuration as JSON (requires authentication)
+      operationId: getConfig
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Configuration retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  config_items:
+                    type: array
+                    items:
+                      type: object
+                  versions:
+                    type: array
+                    items:
+                      type: object
+                  enumerators:
+                    type: array
+                    items:
+                      type: object
+                  token:
+                    type: object
+        '401':
+          description: Unauthorized - Invalid or missing token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /metrics:
+    get:
+      tags:
+        - Metrics
+      summary: Prometheus metrics
+      description: Returns Prometheus-formatted metrics
+      operationId: getMetrics
+      responses:
+        '200':
+          description: Metrics retrieved successfully
+          content:
+            text/plain:
+              schema:
+                type: string
+
+  /api/Control:
+    get:
+      tags:
+        - Control
+      summary: Get all Control documents
+      description: Retrieve infinite scroll batch of sorted, filtered Control documents
+      operationId: getControls
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: name
+          in: query
+          required: false
+          description: Optional name filter (supports partial matches, case-insensitive)
+          schema:
+            type: string
+            example: my-Control
+        - name: after_id
+          in: query
+          required: false
+          description: Cursor for infinite scroll (ID of last item from previous batch, omit for first request)
+          schema:
+            type: string
+            pattern: '^[0-9a-fA-F]{24}$'
+            example: 507f1f77bcf86cd799439011
+        - name: limit
+          in: query
+          required: false
+          description: Items per page (max 100)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 10
+            example: 10
+        - name: sort_by
+          in: query
+          required: false
+          description: Field to sort by (name, description, status, created.at_time, saved.at_time)
+          schema:
+            type: string
+            default: name
+            example: name
+        - name: order
+          in: query
+          required: false
+          description: Sort order
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: asc
+            example: asc
+      responses:
+        '200':
+          description: Successfully retrieved controls
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - items
+                  - limit
+                  - has_more
+                  - next_cursor
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Control'
+                  limit:
+                    type: integer
+                    example: 10
+                  has_more:
+                    type: boolean
+                    example: true
+                  next_cursor:
+                    type: string
+                    nullable: true
+                    pattern: '^[0-9a-fA-F]{24}$'
+                    example: 507f1f77bcf86cd799439011
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      tags:
+        - Control
+      summary: Create a new Control document
+      description: Create a new Control document (requires staff or admin role)
+      operationId: createControl
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ControlInput'
+      responses:
+        '201':
+          description: Control created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  _id:
+                    type: string
+                    pattern: '^[0-9a-fA-F]{24}$'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/Control/{ControlId}:
+    get:
+      tags:
+        - Control
+      summary: Get Control by ControlId
+      description: Retrieve a specific Control document by its ControlId
+      operationId: getControl
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: ControlId
+          in: path
+          required: true
+          description: The Control ID (MongoDB ObjectId)
+          schema:
+            type: string
+            pattern: '^[0-9a-fA-F]{24}$'
+            example: 507f1f77bcf86cd799439011
+      responses:
+        '200':
+          description: Successfully retrieved Control
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Control'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    patch:
+      tags:
+        - Control
+      summary: Update Control document
+      description: Update a Control document (requires admin role). Cannot update _id, created, or saved fields.
+      operationId: updateControl
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: ControlId
+          in: path
+          required: true
+          description: The Control ID (MongoDB ObjectId)
+          schema:
+            type: string
+            pattern: '^[0-9a-fA-F]{24}$'
+            example: 507f1f77bcf86cd799439011
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ControlUpdate'
+      responses:
+        '200':
+          description: Control updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Control'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/Create:
+    get:
+      tags:
+        - Create
+      summary: Get all Create documents
+      description: Retrieve infinite scroll batch of sorted, filtered Create documents
+      operationId: getCreates
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: name
+          in: query
+          required: false
+          description: Optional name filter (supports partial matches, case-insensitive)
+          schema:
+            type: string
+            example: my-Create
+        - name: after_id
+          in: query
+          required: false
+          description: Cursor for infinite scroll (ID of last item from previous batch, omit for first request)
+          schema:
+            type: string
+            pattern: '^[0-9a-fA-F]{24}$'
+            example: 507f1f77bcf86cd799439011
+        - name: limit
+          in: query
+          required: false
+          description: Items per page (max 100)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 10
+            example: 10
+        - name: sort_by
+          in: query
+          required: false
+          description: Field to sort by (name, description, created.at_time)
+          schema:
+            type: string
+            default: name
+            example: name
+        - name: order
+          in: query
+          required: false
+          description: Sort order
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: asc
+            example: asc
+      responses:
+        '200':
+          description: Successfully retrieved Creates
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - items
+                  - limit
+                  - has_more
+                  - next_cursor
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Create'
+                  limit:
+                    type: integer
+                    example: 10
+                  has_more:
+                    type: boolean
+                    example: true
+                  next_cursor:
+                    type: string
+                    nullable: true
+                    pattern: '^[0-9a-fA-F]{24}$'
+                    example: 507f1f77bcf86cd799439011
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      tags:
+        - Create
+      summary: Create a new Create document
+      description: Create a new Create document (requires staff or admin role)
+      operationId: createCreate
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateInput'
+      responses:
+        '201':
+          description: Create created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  _id:
+                    type: string
+                    pattern: '^[0-9a-fA-F]{24}$'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/Create/{CreateId}:
+    get:
+      tags:
+        - Create
+      summary: Get Create by CreateId
+      description: Retrieve a specific Create document by its CreateId
+      operationId: getCreate
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: CreateId
+          in: path
+          required: true
+          description: The Create ID (MongoDB ObjectId)
+          schema:
+            type: string
+            pattern: '^[0-9a-fA-F]{24}$'
+            example: 507f1f77bcf86cd799439011
+      responses:
+        '200':
+          description: Successfully retrieved Create
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Create'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/Consume:
+    get:
+      tags:
+        - Consume
+      summary: Get all Consume documents
+      description: Retrieve infinite scroll batch of sorted, filtered Consume documents (read-only)
+      operationId: getConsumes
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: name
+          in: query
+          required: false
+          description: Optional name filter (supports partial matches, case-insensitive)
+          schema:
+            type: string
+            example: my-Consume
+        - name: after_id
+          in: query
+          required: false
+          description: Cursor for infinite scroll (ID of last item from previous batch, omit for first request)
+          schema:
+            type: string
+            pattern: '^[0-9a-fA-F]{24}$'
+            example: 507f1f77bcf86cd799439011
+        - name: limit
+          in: query
+          required: false
+          description: Items per page (max 100)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 10
+            example: 10
+        - name: sort_by
+          in: query
+          required: false
+          description: Field to sort by (name, description)
+          schema:
+            type: string
+            default: name
+            example: name
+        - name: order
+          in: query
+          required: false
+          description: Sort order
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: asc
+            example: asc
+      responses:
+        '200':
+          description: Successfully retrieved Consumes
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - items
+                  - limit
+                  - has_more
+                  - next_cursor
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Consume'
+                  limit:
+                    type: integer
+                    example: 10
+                  has_more:
+                    type: boolean
+                    example: true
+                  next_cursor:
+                    type: string
+                    nullable: true
+                    pattern: '^[0-9a-fA-F]{24}$'
+                    example: 507f1f77bcf86cd799439011
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/Consume/{ConsumeId}:
+    get:
+      tags:
+        - Consume
+      summary: Get Consume by ConsumeId
+      description: Retrieve a specific Consume document by its ConsumeId (read-only)
+      operationId: getConsume
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: ConsumeId
+          in: path
+          required: true
+          description: The Consume ID (MongoDB ObjectId)
+          schema:
+            type: string
+            pattern: '^[0-9a-fA-F]{24}$'
+            example: 507f1f77bcf86cd799439011
+      responses:
+        '200':
+          description: Successfully retrieved Consume
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Consume'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        JWT issued by your identity provider (Developer Edition welcome flow for local dev).
+        Include the token in the Authorization header: `Bearer <token>`
+
+  parameters:
+    ObjectId:
+      name: controlId
+      in: path
+      required: true
+      description: MongoDB ObjectId
+      schema:
+        type: string
+        pattern: '^[0-9a-fA-F]{24}$'
+        example: 507f1f77bcf86cd799439011
+
+  responses:
+    BadRequest:
+      description: Bad Request - Invalid request parameters
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: Unauthorized - Invalid or missing token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: Forbidden - Insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+  schemas:
+    Error:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          description: Error message
+          example: Unauthorized
+
+    Breadcrumb:
+      type: object
+      description: Audit trail information
+      additionalProperties: false
+      required:
+        - from_ip
+        - by_user
+        - at_time
+        - correlation_id
+      properties:
+        from_ip:
+          type: string
+          format: ip
+          description: HTTP request remote IP address
+          example: 192.168.1.1
+        at_time:
+          type: string
+          format: date-time
+          description: Timestamp of the action
+          example: "2024-01-15T10:00:00Z"
+        by_user:
+          type: string
+          description: User ID who performed the action
+          pattern: '^[^\s]{1,40}$'
+          example: user-123
+        correlation_id:
+          type: string
+          description: Logging correlation ID
+          pattern: '^[^\s]{1,40}$'
+          example: corr-abc123
+
+    Control:
+      type: object
+      description: Control domain document
+      additionalProperties: false
+      required:
+        - _id
+        - name
+        - created
+        - saved
+      properties:
+        _id:
+          type: string
+          description: MongoDB document ID
+          pattern: '^[0-9a-fA-F]{24}$'
+          example: 507f1f77bcf86cd799439011
+        name:
+          type: string
+          description: Control name
+          pattern: '^[^\s]{1,40}$'
+          example: my-Control
+        description:
+          type: string
+          description: Control description
+          pattern: '^[^\t\n]{0,255}$'
+          example: A sample Control document
+        status:
+          type: string
+          description: Control status
+          enum:
+            - active
+            - archived
+          example: active
+        created:
+          $ref: '#/components/schemas/Breadcrumb'
+        saved:
+          $ref: '#/components/schemas/Breadcrumb'
+
+    ControlInput:
+      type: object
+      description: Input for creating a Control document
+      properties:
+        name:
+          type: string
+          description: Control name
+          pattern: '^[^\s]{1,40}$'
+          example: my-Control
+        description:
+          type: string
+          description: Control description
+          pattern: '^[^\t\n]{0,255}$'
+          example: A sample Control document
+        status:
+          type: string
+          description: Control status
+          enum:
+            - active
+            - archived
+          example: active
+
+    ControlUpdate:
+      type: object
+      description: Fields to update in a Control document (cannot include _id, created, saved)
+      properties:
+        name:
+          type: string
+          description: Control name
+          pattern: '^[^\s]{1,40}$'
+        description:
+          type: string
+          description: Control description
+          pattern: '^[^\t\n]{0,255}$'
+        status:
+          type: string
+          description: Control status
+          enum:
+            - active
+            - archived
+    Create:
+      type: object
+      description: Create domain document
+      additionalProperties: false
+      required:
+        - _id
+        - name
+        - created
+      properties:
+        _id:
+          type: string
+          description: MongoDB document ID
+          pattern: '^[0-9a-fA-F]{24}$'
+          example: 507f1f77bcf86cd799439011
+        name:
+          type: string
+          description: Create name
+          pattern: '^[^\s]{1,40}$'
+          example: my-Create
+        description:
+          type: string
+          description: Create description
+          pattern: '^[^\t\n]{0,255}$'
+          example: A sample Create document
+        status:
+          type: string
+          description: Create status
+          example: active
+        created:
+          $ref: '#/components/schemas/Breadcrumb'
+
+    CreateInput:
+      type: object
+      description: Input for creating a Create document
+      properties:
+        name:
+          type: string
+          description: Create name
+          pattern: '^[^\s]{1,40}$'
+          example: my-Create
+        description:
+          type: string
+          description: Create description
+          pattern: '^[^\t\n]{0,255}$'
+          example: A sample Create document
+        status:
+          type: string
+          description: Create status
+          example: active
+    Consume:
+      type: object
+      description: Consume domain document (read-only)
+      additionalProperties: false
+      required:
+        - _id
+        - name
+      properties:
+        _id:
+          type: string
+          description: MongoDB document ID
+          pattern: '^[0-9a-fA-F]{24}$'
+          example: 507f1f77bcf86cd799439011
+        name:
+          type: string
+          description: Consume name
+          pattern: '^[^\s]{1,40}$'
+          example: my-Consume
+        description:
+          type: string
+          description: Consume description
+          pattern: '^[^\t\n]{0,255}$'
+          example: A sample Consume document
+        status:
+          type: string
+          description: Consume status
+          example: active
+    InfiniteScrollResponse:
+      type: object
+      description: Infinite scroll pagination response
+      required:
+        - items
+        - limit
+        - has_more
+        - next_cursor
+      properties:
+        items:
+          type: array
+          description: Array of resource documents
+          items: {}
+        limit:
+          type: integer
+          description: Items per batch
+          example: 10
+        has_more:
+          type: boolean
+          description: Whether there are more items available
+          example: true
+        next_cursor:
+          type: string
+          nullable: true
+          description: ID of last item for next request (null if no more items)
+          pattern: '^[0-9a-fA-F]{24}$'
+          example: 507f1f77bcf86cd799439011
