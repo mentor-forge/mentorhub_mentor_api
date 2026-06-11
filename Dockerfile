@@ -1,27 +1,24 @@
-# Stage 1: Build - install deps (needs git + GITHUB_TOKEN for private api-utils) and compile
+# Stage 1: Build - install deps from CodeArtifact (PIP_INDEX_URL) and compile
 FROM python:3.12-slim AS build
 
 WORKDIR /app
 
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends git && \
-    rm -rf /var/lib/apt/lists/* && \
-    pip install --no-cache-dir pipenv
+RUN pip install --no-cache-dir pipenv
 
 COPY Pipfile Pipfile.lock ./
 
-ARG GITHUB_TOKEN
-RUN git config --global url."https://${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/" && \
-    pipenv install --deploy --system && \
+ARG PIP_INDEX_URL
+RUN pipenv requirements | grep -v '^-i ' > requirements.txt && \
+    pip install --no-cache-dir --index-url "${PIP_INDEX_URL}" -r requirements.txt && \
     pip install --no-cache-dir gunicorn
 
 COPY src/ ./src/
 COPY docs/ ./docs/
 
 RUN DATE=$(date +'%Y%m%d-%H%M%S') && echo "${DATE}" > /app/BUILT_AT
-RUN pipenv run build
+RUN python -m compileall -b -f -q src/
 
-# Stage 2: Production - no git, no token; copy installed packages from build
+# Stage 2: Production - no tokens; copy installed packages from build
 FROM python:3.12-slim
 
 LABEL org.opencontainers.image.source="https://github.com/mentor-forge/mentorhub_mentor_api"

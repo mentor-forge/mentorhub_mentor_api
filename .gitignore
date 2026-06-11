@@ -26,7 +26,7 @@ wheels/
 # Pipenv
 # Note: Pipfile.lock should be committed for applications (ensures reproducible builds)
 # Pipfile.lock
-
+.pipenv-requirements.txt
 # IDEs
 .vscode/
 .idea/
