@@ -7,8 +7,8 @@
 ## Developer Commands
 
 ```bash
-## Install dependencies (including dev: pytest, requests for E2E)
-pipenv install --dev
+## Install dependencies (run `mh` first for CodeArtifact auth)
+pipenv run install
 
 # start backing db container 
 # Container Related commands use `de down` before starting the requested containers
@@ -61,11 +61,12 @@ pipenv run lint
 
 see the [Open API Specifications](./docs/openapi.yaml) for details on the API
 
-For E2E, use the static JWT in `test/e2e/e2e_auth.py` with `pipenv run dev` (matching `JWT_SECRET`).
+For E2E, mint a Bearer token via `test/e2e/e2e_auth.py` (`get_auth_token()`) with `pipenv run dev` (matching `JWT_SECRET`).
 
 ### Simple Curl Commands:
 ```bash
-# Bearer token from welcome IdP, or: export TOKEN="$(python -c 'from test.e2e.e2e_auth import E2E_ACCESS_TOKEN; print(E2E_ACCESS_TOKEN)')"
+# Bearer token for local dev (same JWT settings as pipenv run dev / e2e):
+export TOKEN="$(PYTHONPATH=. pipenv run python -c 'from test.e2e.e2e_auth import get_auth_token; print(get_auth_token())')"
 
 # Get the API Configuration
 curl http://localhost:8391/api/config \
