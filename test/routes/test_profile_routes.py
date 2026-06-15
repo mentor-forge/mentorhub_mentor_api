@@ -1,6 +1,7 @@
 """
 Unit tests for Profile routes (consume-style, read-only).
 """
+
 import unittest
 from unittest.mock import patch
 from flask import Flask
@@ -20,7 +21,10 @@ class TestProfileRoutes(unittest.TestCase):
         self.client = self.app.test_client()
 
         self.mock_token = {"user_id": "test_user", "roles": ["developer"]}
-        self.mock_breadcrumb = {"at_time": "sometime", "correlation_id": "correlation_ID"}
+        self.mock_breadcrumb = {
+            "at_time": "sometime",
+            "correlation_id": "correlation_ID",
+        }
 
     @patch("src.routes.profile_routes.create_flask_token")
     @patch("src.routes.profile_routes.create_flask_breadcrumb")
@@ -31,72 +35,61 @@ class TestProfileRoutes(unittest.TestCase):
         mock_create_breadcrumb,
         mock_create_token,
     ):
-        """Test GET /api/profile for successful response."""
+        """Test GET /api/profile returns the Mentor Dashboard array."""
         mock_create_token.return_value = self.mock_token
         mock_create_breadcrumb.return_value = self.mock_breadcrumb
 
-        mock_get_profiles.return_value = {
-            "items": [
-                {"_id": "123", "name": "profile1"},
-                {"_id": "456", "name": "profile2"},
-            ],
-            "limit": 10,
-            "has_more": False,
-            "next_cursor": None,
-        }
+        mock_get_profiles.return_value = [
+            {
+                "_id": "123",
+                "name": "daniel",
+                "description": "mentee one",
+                "progress": {"library": 3, "now": 1, "next": 2},
+                "last_encounter": None,
+            },
+            {
+                "_id": "456",
+                "name": "lucky",
+                "description": "mentee two",
+                "progress": {"library": 0, "now": 0, "next": 0},
+                "last_encounter": None,
+            },
+        ]
 
         response = self.client.get("/api/profile")
 
         self.assertEqual(response.status_code, 200)
         data = response.json
-        self.assertIsInstance(data, dict)
-        self.assertIn("items", data)
-        self.assertEqual(len(data["items"]), 2)
+        self.assertIsInstance(data, list)
+        self.assertEqual(len(data), 2)
+        self.assertEqual(data[0]["progress"], {"library": 3, "now": 1, "next": 2})
         mock_get_profiles.assert_called_once_with(
             self.mock_token,
             self.mock_breadcrumb,
-            name=None,
-            after_id=None,
-            limit=10,
-            sort_by="name",
-            order="asc",
         )
 
     @patch("src.routes.profile_routes.create_flask_token")
     @patch("src.routes.profile_routes.create_flask_breadcrumb")
     @patch("src.routes.profile_routes.ProfileService.get_profiles")
-    def test_get_profiles_with_name_filter(
+    def test_get_profiles_ignores_query_params(
         self,
         mock_get_profiles,
         mock_create_breadcrumb,
         mock_create_token,
     ):
-        """Test GET /api/profile with name query parameter."""
+        """Query parameters are ignored; the service is called with no filters."""
         mock_create_token.return_value = self.mock_token
         mock_create_breadcrumb.return_value = self.mock_breadcrumb
 
-        mock_get_profiles.return_value = {
-            "items": [{"_id": "123", "name": "test-profile"}],
-            "limit": 10,
-            "has_more": False,
-            "next_cursor": None,
-        }
+        mock_get_profiles.return_value = []
 
-        response = self.client.get("/api/profile?name=test")
+        response = self.client.get("/api/profile?name=test&limit=5")
 
         self.assertEqual(response.status_code, 200)
-        data = response.json
-        self.assertIsInstance(data, dict)
-        self.assertIn("items", data)
-        self.assertEqual(len(data["items"]), 1)
+        self.assertEqual(response.json, [])
         mock_get_profiles.assert_called_once_with(
             self.mock_token,
             self.mock_breadcrumb,
-            name="test",
-            after_id=None,
-            limit=10,
-            sort_by="name",
-            order="asc",
         )
 
     @patch("src.routes.profile_routes.create_flask_token")
@@ -141,9 +134,7 @@ class TestProfileRoutes(unittest.TestCase):
         mock_create_token.return_value = self.mock_token
         mock_create_breadcrumb.return_value = self.mock_breadcrumb
 
-        mock_get_profile.side_effect = HTTPNotFound(
-            "Profile 999 not found"
-        )
+        mock_get_profile.side_effect = HTTPNotFound("Profile 999 not found")
 
         response = self.client.get("/api/profile/999")
 
