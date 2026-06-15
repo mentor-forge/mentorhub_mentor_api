@@ -162,7 +162,7 @@ paths:
                   items:
                     type: array
                     items:
-                      $ref: '#/components/schemas/Control'
+                      $ref: '#/components/schemas/Resource'
                   limit:
                     type: integer
                     example: 10
@@ -349,7 +349,7 @@ paths:
                   items:
                     type: array
                     items:
-                      $ref: '#/components/schemas/Control'
+                      $ref: '#/components/schemas/Path'
                   limit:
                     type: integer
                     example: 10
@@ -536,7 +536,7 @@ paths:
                   items:
                     type: array
                     items:
-                      $ref: '#/components/schemas/Control'
+                      $ref: '#/components/schemas/Plan'
                   limit:
                     type: integer
                     example: 10
@@ -723,7 +723,7 @@ paths:
                   items:
                     type: array
                     items:
-                      $ref: '#/components/schemas/Control'
+                      $ref: '#/components/schemas/Encounter'
                   limit:
                     type: integer
                     example: 10
@@ -1205,7 +1205,7 @@ components:
 
     Resource:
       type: object
-      description: Resource domain document
+      description: A learning resource (link)
       additionalProperties: false
       required:
         - _id
@@ -1215,26 +1215,76 @@ components:
       properties:
         _id:
           type: string
-          description: MongoDB document ID
+          description: The unique identifier for the Resource.
           pattern: '^[0-9a-fA-F]{24}$'
           example: 507f1f77bcf86cd799439011
         name:
           type: string
-          description: Resource name
+          description: The searchable name of the document
           pattern: '^[^\s]{1,40}$'
           example: my-Resource
         description:
           type: string
-          description: Resource description
+          description: The description of the Resource.
           pattern: '^[^\t\n]{0,255}$'
           example: A sample Resource document
+        url:
+          type: string
+          format: uri
+          description: The link for the resource
+          example: https://example.com/resource
         status:
           type: string
-          description: Resource status
+          description: Status of the document
           enum:
             - active
-            - archived
+            - failed
           example: active
+        interests:
+          type: array
+          description: A list of interests this resource is related to
+          items:
+            type: string
+            enum:
+              - api
+              - data
+              - design
+              - games
+              - iot
+              - robot
+              - sre
+              - ux
+        technologies:
+          type: array
+          description: A list of technologies this resource covers
+          items:
+            type: string
+            enum:
+              - CSS
+              - HTML
+              - Java
+              - MongoDB
+              - Other
+              - Python
+              - React
+              - TypeScript
+        last_verified:
+          type: string
+          format: date-time
+          description: When was this resource link last verified
+          example: "2024-01-15T10:00:00Z"
+        note_count:
+          type: integer
+          description: The number of notes this resource has
+          minimum: 1
+        rating_count:
+          type: integer
+          description: The number of raitings this resource has
+          minimum: 1
+        rating_sum:
+          type: integer
+          description: The sum of all resource ratings for this resource
+          minimum: 1
         created:
           $ref: '#/components/schemas/Breadcrumb'
         saved:
@@ -1246,21 +1296,58 @@ components:
       properties:
         name:
           type: string
-          description: Resource name
+          description: The searchable name of the document
           pattern: '^[^\s]{1,40}$'
           example: my-Resource
         description:
           type: string
-          description: Resource description
+          description: The description of the Resource.
           pattern: '^[^\t\n]{0,255}$'
           example: A sample Resource document
+        url:
+          type: string
+          format: uri
+          description: The link for the resource
+          example: https://example.com/resource
         status:
           type: string
-          description: Resource status
+          description: Status of the document
           enum:
             - active
-            - archived
+            - failed
           example: active
+        interests:
+          type: array
+          description: A list of interests this resource is related to
+          items:
+            type: string
+            enum:
+              - api
+              - data
+              - design
+              - games
+              - iot
+              - robot
+              - sre
+              - ux
+        technologies:
+          type: array
+          description: A list of technologies this resource covers
+          items:
+            type: string
+            enum:
+              - CSS
+              - HTML
+              - Java
+              - MongoDB
+              - Other
+              - Python
+              - React
+              - TypeScript
+        last_verified:
+          type: string
+          format: date-time
+          description: When was this resource link last verified
 
     ResourceUpdate:
       type: object
@@ -1268,21 +1355,57 @@ components:
       properties:
         name:
           type: string
-          description: Resource name
+          description: The searchable name of the document
           pattern: '^[^\s]{1,40}$'
         description:
           type: string
-          description: Resource description
+          description: The description of the Resource.
           pattern: '^[^\t\n]{0,255}$'
+        url:
+          type: string
+          format: uri
+          description: The link for the resource
         status:
           type: string
-          description: Resource status
+          description: Status of the document
           enum:
             - active
-            - archived
+            - failed
+        interests:
+          type: array
+          description: A list of interests this resource is related to
+          items:
+            type: string
+            enum:
+              - api
+              - data
+              - design
+              - games
+              - iot
+              - robot
+              - sre
+              - ux
+        technologies:
+          type: array
+          description: A list of technologies this resource covers
+          items:
+            type: string
+            enum:
+              - CSS
+              - HTML
+              - Java
+              - MongoDB
+              - Other
+              - Python
+              - React
+              - TypeScript
+        last_verified:
+          type: string
+          format: date-time
+          description: When was this resource link last verified
     Path:
       type: object
-      description: Path domain document
+      description: A learning path through resources
       additionalProperties: false
       required:
         - _id
@@ -1292,30 +1415,83 @@ components:
       properties:
         _id:
           type: string
-          description: MongoDB document ID
+          description: The unique identifier for the Path.
           pattern: '^[0-9a-fA-F]{24}$'
           example: 507f1f77bcf86cd799439011
         name:
           type: string
-          description: Path name
+          description: The searchable name of the Learning Path
           pattern: '^[^\s]{1,40}$'
           example: my-Path
         description:
           type: string
-          description: Path description
+          description: The description of the Path.
           pattern: '^[^\t\n]{0,255}$'
           example: A sample Path document
         status:
           type: string
-          description: Path status
+          description: Status of the document
           enum:
             - active
             - archived
           example: active
+        tags:
+          type: array
+          description: tags to locate learning paths
+          items:
+            type: string
+            enum:
+              - CSS
+              - HTML
+              - Java
+              - MongoDB
+              - Other
+              - Python
+              - React
+              - TypeScript
+        modules:
+          $ref: '#/components/schemas/PathModules'
         created:
           $ref: '#/components/schemas/Breadcrumb'
         saved:
           $ref: '#/components/schemas/Breadcrumb'
+
+    PathModules:
+      type: array
+      description: The list of top level Modules for this path
+      items:
+        type: object
+        additionalProperties: false
+        properties:
+          name:
+            type: string
+            description: The Module Name
+            pattern: '^[^\s]{1,40}$'
+          description:
+            type: string
+            description: A brief description of the Module
+            pattern: '^[^\t\n]{0,255}$'
+          topics:
+            type: array
+            description: A list of Topics in this Module
+            items:
+              type: object
+              additionalProperties: false
+              properties:
+                name:
+                  type: string
+                  description: The name of the topic
+                  pattern: '^[^\s]{1,40}$'
+                description:
+                  type: string
+                  description: A brief description of the topic
+                  pattern: '^[^\t\n]{0,255}$'
+                resources:
+                  type: array
+                  description: The resource _ids of Resources for this Topic
+                  items:
+                    type: string
+                    pattern: '^[0-9a-fA-F]{24}$'
 
     PathInput:
       type: object
@@ -1323,21 +1499,37 @@ components:
       properties:
         name:
           type: string
-          description: Path name
+          description: The searchable name of the Learning Path
           pattern: '^[^\s]{1,40}$'
           example: my-Path
         description:
           type: string
-          description: Path description
+          description: The description of the Path.
           pattern: '^[^\t\n]{0,255}$'
           example: A sample Path document
         status:
           type: string
-          description: Path status
+          description: Status of the document
           enum:
             - active
             - archived
           example: active
+        tags:
+          type: array
+          description: tags to locate learning paths
+          items:
+            type: string
+            enum:
+              - CSS
+              - HTML
+              - Java
+              - MongoDB
+              - Other
+              - Python
+              - React
+              - TypeScript
+        modules:
+          $ref: '#/components/schemas/PathModules'
 
     PathUpdate:
       type: object
@@ -1345,21 +1537,37 @@ components:
       properties:
         name:
           type: string
-          description: Path name
+          description: The searchable name of the Learning Path
           pattern: '^[^\s]{1,40}$'
         description:
           type: string
-          description: Path description
+          description: The description of the Path.
           pattern: '^[^\t\n]{0,255}$'
         status:
           type: string
-          description: Path status
+          description: Status of the document
           enum:
             - active
             - archived
+        tags:
+          type: array
+          description: tags to locate learning paths
+          items:
+            type: string
+            enum:
+              - CSS
+              - HTML
+              - Java
+              - MongoDB
+              - Other
+              - Python
+              - React
+              - TypeScript
+        modules:
+          $ref: '#/components/schemas/PathModules'
     Plan:
       type: object
-      description: Plan domain document
+      description: A encounter plan.
       additionalProperties: false
       required:
         - _id
@@ -1369,22 +1577,22 @@ components:
       properties:
         _id:
           type: string
-          description: MongoDB document ID
+          description: The unique identifier for the Plan.
           pattern: '^[0-9a-fA-F]{24}$'
           example: 507f1f77bcf86cd799439011
         name:
           type: string
-          description: Plan name
+          description: The searchable name of the document
           pattern: '^[^\s]{1,40}$'
           example: my-Plan
         description:
           type: string
-          description: Plan description
+          description: The description of the Plan.
           pattern: '^[^\t\n]{0,255}$'
           example: A sample Plan document
         status:
           type: string
-          description: Plan status
+          description: Status of the document
           enum:
             - active
             - archived
@@ -1400,17 +1608,17 @@ components:
       properties:
         name:
           type: string
-          description: Plan name
+          description: The searchable name of the document
           pattern: '^[^\s]{1,40}$'
           example: my-Plan
         description:
           type: string
-          description: Plan description
+          description: The description of the Plan.
           pattern: '^[^\t\n]{0,255}$'
           example: A sample Plan document
         status:
           type: string
-          description: Plan status
+          description: Status of the document
           enum:
             - active
             - archived
@@ -1422,50 +1630,71 @@ components:
       properties:
         name:
           type: string
-          description: Plan name
+          description: The searchable name of the document
           pattern: '^[^\s]{1,40}$'
         description:
           type: string
-          description: Plan description
+          description: The description of the Plan.
           pattern: '^[^\t\n]{0,255}$'
         status:
           type: string
-          description: Plan status
+          description: Status of the document
           enum:
             - active
             - archived
     Encounter:
       type: object
-      description: Encounter domain document
+      description: A learning encounter between a mentor and a craftsperson.
       additionalProperties: false
       required:
         - _id
-        - name
         - created
         - saved
       properties:
         _id:
           type: string
-          description: MongoDB document ID
+          description: The unique identifier for the Encounter.
           pattern: '^[0-9a-fA-F]{24}$'
           example: 507f1f77bcf86cd799439011
-        name:
+        mentor_id:
           type: string
-          description: Encounter name
-          pattern: '^[^\s]{1,40}$'
-          example: my-Encounter
-        description:
+          description: The _id of the Mentors Profile
+          pattern: '^[0-9a-fA-F]{24}$'
+          example: 507f1f77bcf86cd799439011
+        mentee_id:
           type: string
-          description: Encounter description
-          pattern: '^[^\t\n]{0,255}$'
-          example: A sample Encounter document
+          description: The _id of the Mentee's Profile
+          pattern: '^[0-9a-fA-F]{24}$'
+          example: 507f1f77bcf86cd799439011
+        plan_id:
+          type: string
+          description: The Encounter Plan used for this encounter
+          pattern: '^[0-9a-fA-F]{24}$'
+          example: 507f1f77bcf86cd799439011
+        date:
+          type: string
+          format: date-time
+          description: When did the encounter occur
+          example: "2024-01-15T10:00:00Z"
         status:
           type: string
-          description: Encounter status
+          description: Status of the document
           enum:
             - active
             - archived
           example: active
+        tldr:
+          type: string
+          description: A one sentence summary of the encounter
+          pattern: '^[^\t\n]{0,255}$'
+        summary:
+          type: string
+          description: A brief summary of the transcript
+          maxLength: 4096
+        transcript:
+          type: string
+          description: The meeting transcript
+          maxLength: 4096
         created:
           $ref: '#/components/schemas/Breadcrumb'
         saved:
@@ -1475,45 +1704,86 @@ components:
       type: object
       description: Input for creating a Encounter document
       properties:
-        name:
+        mentor_id:
           type: string
-          description: Encounter name
-          pattern: '^[^\s]{1,40}$'
-          example: my-Encounter
-        description:
+          description: The _id of the Mentors Profile
+          pattern: '^[0-9a-fA-F]{24}$'
+          example: 507f1f77bcf86cd799439011
+        mentee_id:
           type: string
-          description: Encounter description
-          pattern: '^[^\t\n]{0,255}$'
-          example: A sample Encounter document
+          description: The _id of the Mentee's Profile
+          pattern: '^[0-9a-fA-F]{24}$'
+          example: 507f1f77bcf86cd799439011
+        plan_id:
+          type: string
+          description: The Encounter Plan used for this encounter
+          pattern: '^[0-9a-fA-F]{24}$'
+          example: 507f1f77bcf86cd799439011
+        date:
+          type: string
+          format: date-time
+          description: When did the encounter occur
         status:
           type: string
-          description: Encounter status
+          description: Status of the document
           enum:
             - active
             - archived
           example: active
+        tldr:
+          type: string
+          description: A one sentence summary of the encounter
+          pattern: '^[^\t\n]{0,255}$'
+        summary:
+          type: string
+          description: A brief summary of the transcript
+          maxLength: 4096
+        transcript:
+          type: string
+          description: The meeting transcript
+          maxLength: 4096
 
     EncounterUpdate:
       type: object
       description: Fields to update in a Encounter document (cannot include _id, created, saved)
       properties:
-        name:
+        mentor_id:
           type: string
-          description: Encounter name
-          pattern: '^[^\s]{1,40}$'
-        description:
+          description: The _id of the Mentors Profile
+          pattern: '^[0-9a-fA-F]{24}$'
+        mentee_id:
           type: string
-          description: Encounter description
-          pattern: '^[^\t\n]{0,255}$'
+          description: The _id of the Mentee's Profile
+          pattern: '^[0-9a-fA-F]{24}$'
+        plan_id:
+          type: string
+          description: The Encounter Plan used for this encounter
+          pattern: '^[0-9a-fA-F]{24}$'
+        date:
+          type: string
+          format: date-time
+          description: When did the encounter occur
         status:
           type: string
-          description: Encounter status
+          description: Status of the document
           enum:
             - active
             - archived
+        tldr:
+          type: string
+          description: A one sentence summary of the encounter
+          pattern: '^[^\t\n]{0,255}$'
+        summary:
+          type: string
+          description: A brief summary of the transcript
+          maxLength: 4096
+        transcript:
+          type: string
+          description: The meeting transcript
+          maxLength: 4096
     Event:
       type: object
-      description: Event domain document
+      description: A meaningful event for a user.
       additionalProperties: false
       required:
         - _id
@@ -1522,23 +1792,24 @@ components:
       properties:
         _id:
           type: string
-          description: MongoDB document ID
+          description: The unique identifier for the Event.
           pattern: '^[0-9a-fA-F]{24}$'
           example: 507f1f77bcf86cd799439011
         name:
           type: string
-          description: Event name
-          pattern: '^[^\s]{1,40}$'
-          example: my-Event
+          description: The event type
+          enum:
+            - arrived
+            - completed
+            - fail
+            - login
+            - logout
+          example: login
         description:
           type: string
-          description: Event description
+          description: The Context of the Event.(Event Data)
           pattern: '^[^\t\n]{0,255}$'
           example: A sample Event document
-        status:
-          type: string
-          description: Event status
-          example: active
         created:
           $ref: '#/components/schemas/Breadcrumb'
 
@@ -1548,21 +1819,22 @@ components:
       properties:
         name:
           type: string
-          description: Event name
-          pattern: '^[^\s]{1,40}$'
-          example: my-Event
+          description: The event type
+          enum:
+            - arrived
+            - completed
+            - fail
+            - login
+            - logout
+          example: login
         description:
           type: string
-          description: Event description
+          description: The Context of the Event.(Event Data)
           pattern: '^[^\t\n]{0,255}$'
           example: A sample Event document
-        status:
-          type: string
-          description: Event status
-          example: active
     Profile:
       type: object
-      description: Profile domain document (read-only)
+      description: User Preferences associated with one **Identity**.
       additionalProperties: false
       required:
         - _id
@@ -1570,23 +1842,125 @@ components:
       properties:
         _id:
           type: string
-          description: MongoDB document ID
+          description: The unique identifier for the Profile.
           pattern: '^[0-9a-fA-F]{24}$'
           example: 507f1f77bcf86cd799439011
         name:
           type: string
-          description: Profile name
+          description: The IDP Username used in JWT Claims
           pattern: '^[^\s]{1,40}$'
           example: my-Profile
         description:
           type: string
-          description: Profile description
+          description: A Comment the user adds to their profile
           pattern: '^[^\t\n]{0,255}$'
           example: A sample Profile document
+        email:
+          type: string
+          description: The users email address
+          pattern: '^[^\s@]+@[^\s@]+\.[^\s@]+$'
+          example: user@example.com
+        email_verified:
+          type: boolean
+          description: Has the user verified this email
+        mentor_id:
+          type: string
+          description: The _id of this persons Mentor
+          pattern: '^[0-9a-fA-F]{24}$'
+          example: 507f1f77bcf86cd799439011
         status:
           type: string
-          description: Profile status
+          description: Status of the document
+          enum:
+            - active
+            - archived
+            - suspended
           example: active
+        interests:
+          type: array
+          description: A list of topics this person is interested in
+          items:
+            type: string
+            enum:
+              - api
+              - data
+              - design
+              - games
+              - iot
+              - robot
+              - sre
+              - ux
+        goals:
+          type: array
+          description: 'The goals set by a user '
+          items:
+            type: string
+            pattern: '^[^\t\n]{0,255}$'
+        schedule:
+          type: object
+          additionalProperties: false
+          description: When does the Mentor work with the Mentee
+          properties:
+            repeats:
+              type: integer
+              description: Meeting repeasts every N weeks
+              minimum: 1
+            starting:
+              type: string
+              format: date-time
+              description: When do meetings begin
+        experience:
+          type: array
+          description: Work History - newest to oldest
+          items:
+            type: object
+            additionalProperties: false
+            properties:
+              company:
+                type: string
+                description: The Company Name
+                pattern: '^[^\t\n]{0,255}$'
+              roles:
+                type: array
+                description: The roles this person filled at this company
+                items:
+                  type: object
+                  additionalProperties: false
+                  properties:
+                    title:
+                      type: string
+                      description: Te Job Title
+                      pattern: '^[^\t\n]{0,255}$'
+                    description:
+                      type: string
+                      description: Description of the work, projects, responsibilities
+                      maxLength: 4096
+                    start:
+                      type: string
+                      format: date-time
+                      description: Start Date
+                    end:
+                      type: string
+                      format: date-time
+                      description: End Date
+                    technologies:
+                      type: array
+                      description: Technologies Used
+                      items:
+                        type: string
+                        enum:
+                          - CSS
+                          - HTML
+                          - Java
+                          - MongoDB
+                          - Other
+                          - Python
+                          - React
+                          - TypeScript
+        created:
+          $ref: '#/components/schemas/Breadcrumb'
+        saved:
+          $ref: '#/components/schemas/Breadcrumb'
     InfiniteScrollResponse:
       type: object
       description: Infinite scroll pagination response
