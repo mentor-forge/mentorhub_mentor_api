@@ -995,84 +995,31 @@ paths:
     get:
       tags:
         - Profile
-      summary: Get all Profile documents
-      description: Retrieve infinite scroll batch of sorted, filtered Profile documents (read-only)
+      summary: Get the Mentor Dashboard profiles
+      description: |
+        Returns the Mentor Dashboard: the set of mentee Profiles assigned to the
+        current user (resolved from the JWT token's identity — Profiles whose
+        `mentor_id` matches the caller). This is a read-only, non-paginated
+        endpoint that always returns the full set in a pre-determined order, so
+        it accepts no filter, sort, or pagination parameters.
+
+        Each item combines basic Profile information (`_id`, `name`,
+        `description`), the mentee's learning-journey progress (the number of
+        resources in their Library, Now, and Next scopes), and the summary of
+        their most recent Encounter.
       operationId: getProfiles
       security:
         - bearerAuth: []
-      parameters:
-        - name: name
-          in: query
-          required: false
-          description: Optional name filter (supports partial matches, case-insensitive)
-          schema:
-            type: string
-            example: my-Profile
-        - name: after_id
-          in: query
-          required: false
-          description: Cursor for infinite scroll (ID of last item from previous batch, omit for first request)
-          schema:
-            type: string
-            pattern: '^[0-9a-fA-F]{24}$'
-            example: 507f1f77bcf86cd799439011
-        - name: limit
-          in: query
-          required: false
-          description: Items per page (max 100)
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-            default: 10
-            example: 10
-        - name: sort_by
-          in: query
-          required: false
-          description: Field to sort by (name, description)
-          schema:
-            type: string
-            default: name
-            example: name
-        - name: order
-          in: query
-          required: false
-          description: Sort order
-          schema:
-            type: string
-            enum: [asc, desc]
-            default: asc
-            example: asc
       responses:
         '200':
-          description: Successfully retrieved Profiles
+          description: Successfully retrieved the Mentor Dashboard profiles
           content:
             application/json:
               schema:
-                type: object
-                required:
-                  - items
-                  - limit
-                  - has_more
-                  - next_cursor
-                properties:
-                  items:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/Profile'
-                  limit:
-                    type: integer
-                    example: 10
-                  has_more:
-                    type: boolean
-                    example: true
-                  next_cursor:
-                    type: string
-                    nullable: true
-                    pattern: '^[0-9a-fA-F]{24}$'
-                    example: 507f1f77bcf86cd799439011
-        '400':
-          $ref: '#/components/responses/BadRequest'
+                type: array
+                description: Mentee dashboard cards for the current mentor, in a pre-determined order
+                items:
+                  $ref: '#/components/schemas/MentorDashboardProfile'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '500':
@@ -1961,6 +1908,95 @@ components:
           $ref: '#/components/schemas/Breadcrumb'
         saved:
           $ref: '#/components/schemas/Breadcrumb'
+
+    MentorDashboardProfile:
+      type: object
+      description: |
+        A single mentee card on the Mentor Dashboard. Combines basic Profile
+        information with derived learning-journey progress and the summary of
+        the mentee's most recent encounter. All derived fields are computed at
+        read time and are not stored on the Profile document.
+      additionalProperties: false
+      required:
+        - _id
+        - name
+        - progress
+      properties:
+        _id:
+          type: string
+          description: The Profile _id of the mentee
+          pattern: '^[0-9a-fA-F]{24}$'
+          example: 507f1f77bcf86cd799439011
+        name:
+          type: string
+          description: The mentee's profile name (IdP username)
+          pattern: '^[^\s]{1,40}$'
+          example: my-Profile
+        description:
+          type: string
+          description: The comment the mentee added to their profile
+          pattern: '^[^\t\n]{0,255}$'
+          example: A sample Profile document
+        progress:
+          $ref: '#/components/schemas/JourneyProgress'
+        last_encounter:
+          $ref: '#/components/schemas/RecentEncounterSummary'
+
+    JourneyProgress:
+      type: object
+      description: |
+        Resource counts for the mentee's active Learning Journey, one count per
+        scope. Derived from the Journey document's `library`, `now`, and `next`
+        arrays.
+      additionalProperties: false
+      required:
+        - library
+        - now
+        - next
+      properties:
+        library:
+          type: integer
+          description: Number of resources in the Library (started/completed) scope
+          minimum: 0
+          example: 12
+        now:
+          type: integer
+          description: Number of resources currently being worked on (Now scope)
+          minimum: 0
+          example: 3
+        next:
+          type: integer
+          description: Number of resources queued up Next (total resource entries across all Next topics)
+          minimum: 0
+          example: 5
+
+    RecentEncounterSummary:
+      type: object
+      description: |
+        Summary of the mentee's most recent Encounter. Null when the mentee has
+        no recorded encounters yet.
+      nullable: true
+      additionalProperties: false
+      properties:
+        _id:
+          type: string
+          description: The Encounter _id
+          pattern: '^[0-9a-fA-F]{24}$'
+          example: 507f1f77bcf86cd799439011
+        date:
+          type: string
+          format: date-time
+          description: When the encounter occurred
+          example: "2024-01-15T10:00:00Z"
+        tldr:
+          type: string
+          description: A one sentence summary of the encounter
+          pattern: '^[^\t\n]{0,255}$'
+        summary:
+          type: string
+          description: A brief summary of the transcript
+          maxLength: 4096
+
     InfiniteScrollResponse:
       type: object
       description: Infinite scroll pagination response
