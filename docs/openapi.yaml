@@ -94,7 +94,7 @@ paths:
               schema:
                 type: string
 
-  /api/Resource:
+  /api/resource:
     get:
       tags:
         - Resource
@@ -148,7 +148,7 @@ paths:
             example: asc
       responses:
         '200':
-          description: Successfully retrieved controls
+          description: Successfully retrieved matching documents
           content:
             application/json:
               schema:
@@ -212,7 +212,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
-  /api/Resource/{ResourceId}:
+  /api/resource/{ResourceId}:
     get:
       tags:
         - Resource
@@ -281,7 +281,7 @@ paths:
           $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalError'
-  /api/Path:
+  /api/path:
     get:
       tags:
         - Path
@@ -335,7 +335,7 @@ paths:
             example: asc
       responses:
         '200':
-          description: Successfully retrieved controls
+          description: Successfully retrieved matching documents
           content:
             application/json:
               schema:
@@ -399,7 +399,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
-  /api/Path/{PathId}:
+  /api/path/{PathId}:
     get:
       tags:
         - Path
@@ -468,7 +468,7 @@ paths:
           $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalError'
-  /api/Plan:
+  /api/plan:
     get:
       tags:
         - Plan
@@ -522,7 +522,7 @@ paths:
             example: asc
       responses:
         '200':
-          description: Successfully retrieved controls
+          description: Successfully retrieved matching documents
           content:
             application/json:
               schema:
@@ -586,7 +586,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
-  /api/Plan/{PlanId}:
+  /api/plan/{PlanId}:
     get:
       tags:
         - Plan
@@ -655,7 +655,7 @@ paths:
           $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalError'
-  /api/Encounter:
+  /api/encounter:
     get:
       tags:
         - Encounter
@@ -709,7 +709,7 @@ paths:
             example: asc
       responses:
         '200':
-          description: Successfully retrieved controls
+          description: Successfully retrieved matching documents
           content:
             application/json:
               schema:
@@ -773,7 +773,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
-  /api/Encounter/{EncounterId}:
+  /api/encounter/{EncounterId}:
     get:
       tags:
         - Encounter
@@ -842,7 +842,7 @@ paths:
           $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalError'
-  /api/Event:
+  /api/event:
     get:
       tags:
         - Event
@@ -960,7 +960,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
-  /api/Event/{EventId}:
+  /api/event/{EventId}:
     get:
       tags:
         - Event
@@ -991,13 +991,13 @@ paths:
           $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalError'
-  /api/Profile:
+  /api/profile:
     get:
       tags:
         - Profile
       summary: Get the Mentor Dashboard profiles
       description: |
-        Returns the Mentor Dashboard: the set of mentee Profiles assigned to the
+        Returns the Mentor Dashboard (requires the `mentor` role): the set of mentee Profiles assigned to the
         current user (resolved from the JWT token's identity — Profiles whose
         `mentor_id` matches the caller). This is a read-only, non-paginated
         endpoint that always returns the full set in a pre-determined order, so
@@ -1022,14 +1022,16 @@ paths:
                   $ref: '#/components/schemas/MentorDashboardProfile'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '500':
           $ref: '#/components/responses/InternalError'
-  /api/Profile/{ProfileId}:
+  /api/profile/{ProfileId}:
     get:
       tags:
         - Profile
       summary: Get Profile by ProfileId
-      description: Retrieve a specific Profile document by its ProfileId (read-only)
+      description: Retrieve a specific Profile document by its ProfileId (read-only). Requires the `mentor` role.
       operationId: getProfile
       security:
         - bearerAuth: []
@@ -1051,6 +1053,8 @@ paths:
                 $ref: '#/components/schemas/Profile'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
         '500':
