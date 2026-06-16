@@ -5,23 +5,23 @@ Handles RBAC checks and MongoDB operations for the Profile domain. The Profile
 list endpoint powers the Mentor Dashboard: it returns the mentees assigned to
 the current user along with each mentee's learning-journey progress and most
 recent encounter summary.
+
+Per the API standards (separation of concerns), this service contains business
+logic only. It raises the appropriate domain exceptions (e.g. HTTPForbidden,
+HTTPNotFound); the route layer's ``@handle_route_exceptions`` wrapper is
+responsible for translating those, and any unexpected error, into HTTP
+responses.
 """
 
 from api_utils import MongoIO, Config
-from api_utils.flask_utils.exceptions import (
-    HTTPBadRequest,
-    HTTPForbidden,
-    HTTPNotFound,
-    HTTPUnauthorized,
-    HTTPInternalServerError,
-)
+from api_utils.flask_utils.exceptions import HTTPForbidden, HTTPNotFound
 from pymongo import ASCENDING, DESCENDING
 import logging
 
 logger = logging.getLogger(__name__)
 
-# HTTP exceptions that must propagate untouched to the route error handler
-_HTTP_EXCEPTIONS = (HTTPBadRequest, HTTPForbidden, HTTPNotFound, HTTPUnauthorized)
+# Role required to access Profile domain data through this service
+MENTOR_ROLE = "mentor"
 
 
 class ProfileService:
@@ -29,7 +29,7 @@ class ProfileService:
     Service class for Profile domain operations.
 
     Handles:
-    - RBAC authorization checks (placeholder for future implementation)
+    - RBAC authorization checks (requires the ``mentor`` role)
     - MongoDB operations via MongoIO singleton
     - Mentor Dashboard aggregation (Profile + Journey progress + recent Encounter)
     """
@@ -37,19 +37,21 @@ class ProfileService:
     @staticmethod
     def _check_permission(token, operation):
         """
-        Check if the user has permission to perform an operation.
+        Authorize an operation for the Profile domain.
+
+        Only users granted the ``mentor`` role may access profile data through
+        this service.
 
         Args:
             token: Token dictionary with user_id and roles
             operation: The operation being performed (e.g., 'read')
 
         Raises:
-            HTTPForbidden: If user doesn't have required permission
-
-        Note: This is a placeholder for future RBAC implementation.
-        For now, all operations require a valid token (authentication only).
+            HTTPForbidden: If the caller does not hold the ``mentor`` role
         """
-        pass
+        roles = token.get("roles", []) or []
+        if MENTOR_ROLE not in roles:
+            raise HTTPForbidden("Mentor role required to access profile data")
 
     @staticmethod
     def get_profiles(token, breadcrumb):
@@ -73,56 +75,53 @@ class ProfileService:
 
         Returns:
             list[dict]: Mentor Dashboard cards, one per mentee.
+
+        Raises:
+            HTTPForbidden: If the caller does not hold the ``mentor`` role
         """
-        try:
-            ProfileService._check_permission(token, "read")
-            mongo = MongoIO.get_instance()
-            config = Config.get_instance()
+        ProfileService._check_permission(token, "read")
+        mongo = MongoIO.get_instance()
+        config = Config.get_instance()
 
-            mentor_name = token.get("user_id")
-            mentors = mongo.get_documents(
-                config.PROFILE_COLLECTION_NAME,
-                match={"name": mentor_name},
-            )
-            if not mentors:
-                logger.info(
-                    f"No profile found for mentor '{mentor_name}'; "
-                    "returning empty dashboard"
-                )
-                return []
-            mentor_id = mentors[0]["_id"]
-
-            mentees = mongo.get_documents(
-                config.PROFILE_COLLECTION_NAME,
-                match={"mentor_id": mentor_id},
-                sort_by=[("name", ASCENDING)],
-            )
-
-            dashboard = [
-                {
-                    "_id": mentee["_id"],
-                    "name": mentee.get("name"),
-                    "description": mentee.get("description"),
-                    "progress": ProfileService._journey_progress(
-                        mongo, config, mentee["_id"]
-                    ),
-                    "last_encounter": ProfileService._recent_encounter(
-                        mongo, config, mentee["_id"]
-                    ),
-                }
-                for mentee in mentees
-            ]
-
+        mentor_name = token.get("user_id")
+        mentors = mongo.get_documents(
+            config.PROFILE_COLLECTION_NAME,
+            match={"name": mentor_name},
+        )
+        if not mentors:
             logger.info(
-                f"Built mentor dashboard with {len(dashboard)} mentees "
-                f"for user {mentor_name}"
+                f"No profile found for mentor '{mentor_name}'; "
+                "returning empty dashboard"
             )
-            return dashboard
-        except _HTTP_EXCEPTIONS:
-            raise
-        except Exception as e:
-            logger.error(f"Error building mentor dashboard: {str(e)}")
-            raise HTTPInternalServerError("Failed to retrieve profiles")
+            return []
+        mentor_id = mentors[0]["_id"]
+
+        mentees = mongo.get_documents(
+            config.PROFILE_COLLECTION_NAME,
+            match={"mentor_id": mentor_id},
+            sort_by=[("name", ASCENDING)],
+        )
+
+        dashboard = [
+            {
+                "_id": mentee["_id"],
+                "name": mentee.get("name"),
+                "description": mentee.get("description"),
+                "progress": ProfileService._journey_progress(
+                    mongo, config, mentee["_id"]
+                ),
+                "last_encounter": ProfileService._recent_encounter(
+                    mongo, config, mentee["_id"]
+                ),
+            }
+            for mentee in mentees
+        ]
+
+        logger.info(
+            f"Built mentor dashboard with {len(dashboard)} mentees "
+            f"for user {mentor_name}"
+        )
+        return dashboard
 
     @staticmethod
     def _journey_progress(mongo, config, profile_id):
@@ -188,23 +187,16 @@ class ProfileService:
             dict: The profile document
 
         Raises:
+            HTTPForbidden: If the caller does not hold the ``mentor`` role
             HTTPNotFound: If profile is not found
         """
-        try:
-            ProfileService._check_permission(token, "read")
+        ProfileService._check_permission(token, "read")
 
-            mongo = MongoIO.get_instance()
-            config = Config.get_instance()
-            profile = mongo.get_document(config.PROFILE_COLLECTION_NAME, profile_id)
-            if profile is None:
-                raise HTTPNotFound(f"Profile { profile_id} not found")
+        mongo = MongoIO.get_instance()
+        config = Config.get_instance()
+        profile = mongo.get_document(config.PROFILE_COLLECTION_NAME, profile_id)
+        if profile is None:
+            raise HTTPNotFound(f"Profile {profile_id} not found")
 
-            logger.info(
-                f"Retrieved profile { profile_id} for user {token.get('user_id')}"
-            )
-            return profile
-        except HTTPNotFound:
-            raise
-        except Exception as e:
-            logger.error(f"Error retrieving profile { profile_id}: {str(e)}")
-            raise HTTPInternalServerError(f"Failed to retrieve profile { profile_id}")
+        logger.info(f"Retrieved profile {profile_id} for user {token.get('user_id')}")
+        return profile

@@ -153,6 +153,29 @@ class TestProfileRoutes(unittest.TestCase):
         self.assertEqual(response.status_code, 401)
         self.assertIn("error", response.json)
 
+    @patch("src.routes.profile_routes.create_flask_token")
+    @patch("src.routes.profile_routes.create_flask_breadcrumb")
+    @patch("src.routes.profile_routes.ProfileService.get_profiles")
+    def test_get_profiles_forbidden(
+        self,
+        mock_get_profiles,
+        mock_create_breadcrumb,
+        mock_create_token,
+    ):
+        """A service HTTPForbidden is translated to a 403 by the route wrapper."""
+        from api_utils.flask_utils.exceptions import HTTPForbidden
+
+        mock_create_token.return_value = self.mock_token
+        mock_create_breadcrumb.return_value = self.mock_breadcrumb
+        mock_get_profiles.side_effect = HTTPForbidden(
+            "Mentor role required to access profile data"
+        )
+
+        response = self.client.get("/api/profile")
+
+        self.assertEqual(response.status_code, 403)
+        self.assertIn("error", response.json)
+
 
 if __name__ == "__main__":
     unittest.main()

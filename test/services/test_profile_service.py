@@ -6,10 +6,7 @@ import unittest
 from unittest.mock import patch, MagicMock
 from bson import ObjectId
 from src.services.profile_service import ProfileService
-from api_utils.flask_utils.exceptions import (
-    HTTPNotFound,
-    HTTPInternalServerError,
-)
+from api_utils.flask_utils.exceptions import HTTPForbidden, HTTPNotFound
 
 MENTOR_ID = ObjectId("507f1f77bcf86cd799439001")
 MENTEE_1_ID = ObjectId("507f1f77bcf86cd799439011")
@@ -30,7 +27,7 @@ class TestProfileService(unittest.TestCase):
 
     def setUp(self):
         """Set up the test fixture."""
-        self.mock_token = {"user_id": "mike", "roles": ["developer"]}
+        self.mock_token = {"user_id": "mike", "roles": ["mentor"]}
         self.mock_breadcrumb = {
             "at_time": "2024-01-01T00:00:00Z",
             "by_user": "mike",
@@ -103,6 +100,23 @@ class TestProfileService(unittest.TestCase):
 
     @patch("src.services.profile_service.Config.get_instance")
     @patch("src.services.profile_service.MongoIO.get_instance")
+    def test_get_profiles_forbidden_without_mentor_role(
+        self, mock_get_mongo, mock_get_config
+    ):
+        """Callers lacking the mentor role are denied before any DB access."""
+        mock_get_config.return_value = _make_config()
+        mock_mongo = MagicMock()
+        mock_get_mongo.return_value = mock_mongo
+
+        non_mentor_token = {"user_id": "carol", "roles": ["coordinator"]}
+        with self.assertRaises(HTTPForbidden):
+            ProfileService.get_profiles(non_mentor_token, self.mock_breadcrumb)
+
+        # RBAC must short-circuit before touching the database
+        mock_mongo.get_documents.assert_not_called()
+
+    @patch("src.services.profile_service.Config.get_instance")
+    @patch("src.services.profile_service.MongoIO.get_instance")
     def test_get_profiles_empty_when_no_mentor_profile(
         self, mock_get_mongo, mock_get_config
     ):
@@ -142,15 +156,19 @@ class TestProfileService(unittest.TestCase):
 
     @patch("src.services.profile_service.Config.get_instance")
     @patch("src.services.profile_service.MongoIO.get_instance")
-    def test_get_profiles_handles_exception(self, mock_get_mongo, mock_get_config):
-        """Errors are surfaced as HTTPInternalServerError."""
+    def test_get_profiles_propagates_unexpected_errors(
+        self, mock_get_mongo, mock_get_config
+    ):
+        """Unexpected errors propagate untouched for the route wrapper to handle."""
         mock_get_config.return_value = _make_config()
 
         mock_mongo = MagicMock()
-        mock_mongo.get_documents.side_effect = Exception("Database error")
+        mock_mongo.get_documents.side_effect = RuntimeError("Database error")
         mock_get_mongo.return_value = mock_mongo
 
-        with self.assertRaises(HTTPInternalServerError):
+        # The service no longer rewraps into HTTPInternalServerError; the raw
+        # error surfaces so handle_route_exceptions can produce the 500.
+        with self.assertRaises(RuntimeError):
             ProfileService.get_profiles(self.mock_token, self.mock_breadcrumb)
 
     @patch("src.services.profile_service.Config.get_instance")
@@ -176,6 +194,21 @@ class TestProfileService(unittest.TestCase):
 
     @patch("src.services.profile_service.Config.get_instance")
     @patch("src.services.profile_service.MongoIO.get_instance")
+    def test_get_profile_forbidden_without_mentor_role(
+        self, mock_get_mongo, mock_get_config
+    ):
+        """Single-profile reads also require the mentor role."""
+        mock_get_config.return_value = _make_config()
+        mock_mongo = MagicMock()
+        mock_get_mongo.return_value = mock_mongo
+
+        non_mentor_token = {"user_id": "carol", "roles": []}
+        with self.assertRaises(HTTPForbidden):
+            ProfileService.get_profile("123", non_mentor_token, self.mock_breadcrumb)
+        mock_mongo.get_document.assert_not_called()
+
+    @patch("src.services.profile_service.Config.get_instance")
+    @patch("src.services.profile_service.MongoIO.get_instance")
     def test_get_profile_not_found(self, mock_get_mongo, mock_get_config):
         """Test get_profile raises HTTPNotFound when document not found."""
         mock_get_config.return_value = _make_config()
@@ -190,21 +223,29 @@ class TestProfileService(unittest.TestCase):
 
     @patch("src.services.profile_service.Config.get_instance")
     @patch("src.services.profile_service.MongoIO.get_instance")
-    def test_get_profile_handles_exception(self, mock_get_mongo, mock_get_config):
-        """Test get_profile handles exceptions properly."""
+    def test_get_profile_propagates_unexpected_errors(
+        self, mock_get_mongo, mock_get_config
+    ):
+        """Unexpected errors propagate untouched for the route wrapper to handle."""
         mock_get_config.return_value = _make_config()
 
         mock_mongo = MagicMock()
-        mock_mongo.get_document.side_effect = Exception("Database error")
+        mock_mongo.get_document.side_effect = RuntimeError("Database error")
         mock_get_mongo.return_value = mock_mongo
 
-        with self.assertRaises(HTTPInternalServerError):
+        with self.assertRaises(RuntimeError):
             ProfileService.get_profile("123", self.mock_token, self.mock_breadcrumb)
 
-    def test_check_permission_placeholder(self):
-        """Test that _check_permission is a placeholder that allows all operations."""
+    def test_check_permission_allows_mentor(self):
+        """A token with the mentor role passes the permission check."""
         ProfileService._check_permission(self.mock_token, "read")
-        self.assertTrue(True)
+
+    def test_check_permission_denies_non_mentor(self):
+        """A token without the mentor role raises HTTPForbidden."""
+        with self.assertRaises(HTTPForbidden):
+            ProfileService._check_permission(
+                {"user_id": "carol", "roles": ["coordinator"]}, "read"
+            )
 
 
 if __name__ == "__main__":
