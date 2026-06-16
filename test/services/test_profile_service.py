@@ -1,16 +1,25 @@
 """
-Unit tests for Profile service (consume-style, read-only).
+Unit tests for Profile service (Mentor Dashboard, read-only).
 """
+
 import unittest
 from unittest.mock import patch, MagicMock
 from bson import ObjectId
 from src.services.profile_service import ProfileService
-from api_utils.flask_utils.exceptions import (
-    HTTPBadRequest,
-    HTTPForbidden,
-    HTTPNotFound,
-    HTTPInternalServerError,
-)
+from api_utils.flask_utils.exceptions import HTTPForbidden, HTTPNotFound
+
+MENTOR_ID = ObjectId("507f1f77bcf86cd799439001")
+MENTEE_1_ID = ObjectId("507f1f77bcf86cd799439011")
+MENTEE_2_ID = ObjectId("507f1f77bcf86cd799439012")
+ENCOUNTER_ID = ObjectId("507f1f77bcf86cd7994390aa")
+
+
+def _make_config():
+    mock_config = MagicMock()
+    mock_config.PROFILE_COLLECTION_NAME = "Profile"
+    mock_config.JOURNEY_COLLECTION_NAME = "Journey"
+    mock_config.ENCOUNTER_COLLECTION_NAME = "Encounter"
+    return mock_config
 
 
 class TestProfileService(unittest.TestCase):
@@ -18,184 +27,155 @@ class TestProfileService(unittest.TestCase):
 
     def setUp(self):
         """Set up the test fixture."""
-        self.mock_token = {"user_id": "test_user", "roles": ["developer"]}
+        self.mock_token = {"user_id": "mike", "roles": ["mentor"]}
         self.mock_breadcrumb = {
             "at_time": "2024-01-01T00:00:00Z",
-            "by_user": "test_user",
+            "by_user": "mike",
             "from_ip": "127.0.0.1",
             "correlation_id": "test-correlation-id",
         }
 
     @patch("src.services.profile_service.Config.get_instance")
     @patch("src.services.profile_service.MongoIO.get_instance")
-    def test_get_profiles_first_batch(self, mock_get_mongo, mock_get_config):
-        """Test successful retrieval of first batch (no cursor)."""
-        mock_config = MagicMock()
-        mock_config.PROFILE_COLLECTION_NAME = "Profile"
-        mock_get_config.return_value = mock_config
+    def test_get_profiles_builds_dashboard(self, mock_get_mongo, mock_get_config):
+        """Dashboard combines profile info, journey progress, and recent encounter."""
+        mock_get_config.return_value = _make_config()
 
-        mock_collection = MagicMock()
-        mock_cursor = MagicMock()
-        mock_collection.find.return_value = mock_cursor
-        mock_cursor.sort.return_value = mock_cursor
-        mock_cursor.limit.return_value = mock_cursor
-        mock_cursor.__iter__ = lambda self: iter(
-            [
-                {"_id": ObjectId("507f1f77bcf86cd799439011"), "name": "profile1"},
-                {"_id": ObjectId("507f1f77bcf86cd799439012"), "name": "profile2"},
-            ]
-        )
+        def fake_get_documents(collection_name, match=None, project=None, sort_by=None):
+            if collection_name == "Profile" and match == {"name": "mike"}:
+                return [{"_id": MENTOR_ID, "name": "mike"}]
+            if collection_name == "Profile" and match == {"mentor_id": MENTOR_ID}:
+                return [
+                    {"_id": MENTEE_1_ID, "name": "daniel", "description": "mentee one"},
+                    {"_id": MENTEE_2_ID, "name": "lucky", "description": "mentee two"},
+                ]
+            if collection_name == "Journey":
+                if match["profile_id"] == MENTEE_1_ID:
+                    return [
+                        {
+                            "status": "active",
+                            "library": [1, 2, 3],
+                            "now": [1],
+                            "next": [
+                                {"resources": ["a", "b"]},
+                                {"resources": ["c"]},
+                            ],
+                        }
+                    ]
+                return []
+            if collection_name == "Encounter":
+                if match["mentee_id"] == MENTEE_1_ID:
+                    return [
+                        {
+                            "_id": ENCOUNTER_ID,
+                            "date": "2025-02-01T00:00:00Z",
+                            "tldr": "great session",
+                            "summary": "covered async patterns",
+                        }
+                    ]
+                return []
+            return []
 
         mock_mongo = MagicMock()
-        mock_mongo.get_collection.return_value = mock_collection
+        mock_mongo.get_documents.side_effect = fake_get_documents
         mock_get_mongo.return_value = mock_mongo
 
-        result = ProfileService.get_profiles(
-            self.mock_token, self.mock_breadcrumb, limit=10
-        )
+        result = ProfileService.get_profiles(self.mock_token, self.mock_breadcrumb)
 
-        self.assertIn("items", result)
-        self.assertIn("limit", result)
-        self.assertIn("has_more", result)
-        self.assertIn("next_cursor", result)
-        self.assertEqual(len(result["items"]), 2)
-        self.assertEqual(result["limit"], 10)
-        self.assertFalse(result["has_more"])
-        self.assertIsNone(result["next_cursor"])
+        self.assertIsInstance(result, list)
+        self.assertEqual(len(result), 2)
+
+        first = result[0]
+        self.assertEqual(first["_id"], MENTEE_1_ID)
+        self.assertEqual(first["name"], "daniel")
+        self.assertEqual(first["description"], "mentee one")
+        self.assertEqual(first["progress"], {"library": 3, "now": 1, "next": 3})
+        self.assertEqual(first["last_encounter"]["_id"], ENCOUNTER_ID)
+        self.assertEqual(first["last_encounter"]["summary"], "covered async patterns")
+
+        second = result[1]
+        self.assertEqual(second["name"], "lucky")
+        self.assertEqual(second["progress"], {"library": 0, "now": 0, "next": 0})
+        self.assertIsNone(second["last_encounter"])
 
     @patch("src.services.profile_service.Config.get_instance")
     @patch("src.services.profile_service.MongoIO.get_instance")
-    def test_get_profiles_with_name_filter(
+    def test_get_profiles_forbidden_without_mentor_role(
         self, mock_get_mongo, mock_get_config
     ):
-        """Test retrieval of documents with name filter."""
-        mock_config = MagicMock()
-        mock_config.PROFILE_COLLECTION_NAME = "Profile"
-        mock_get_config.return_value = mock_config
+        """Callers lacking the mentor role are denied before any DB access."""
+        mock_get_config.return_value = _make_config()
+        mock_mongo = MagicMock()
+        mock_get_mongo.return_value = mock_mongo
 
-        mock_collection = MagicMock()
-        mock_cursor = MagicMock()
-        mock_collection.find.return_value = mock_cursor
-        mock_cursor.sort.return_value = mock_cursor
-        mock_cursor.limit.return_value = mock_cursor
-        mock_cursor.__iter__ = lambda self: iter(
-            [
-                {"_id": ObjectId("507f1f77bcf86cd799439011"), "name": "test-profile"},
-            ]
+        non_mentor_token = {"user_id": "carol", "roles": ["coordinator"]}
+        with self.assertRaises(HTTPForbidden):
+            ProfileService.get_profiles(non_mentor_token, self.mock_breadcrumb)
+
+        # RBAC must short-circuit before touching the database
+        mock_mongo.get_documents.assert_not_called()
+
+    @patch("src.services.profile_service.Config.get_instance")
+    @patch("src.services.profile_service.MongoIO.get_instance")
+    def test_get_profiles_empty_when_no_mentor_profile(
+        self, mock_get_mongo, mock_get_config
+    ):
+        """Return an empty list when the caller has no Profile."""
+        mock_get_config.return_value = _make_config()
+
+        mock_mongo = MagicMock()
+        mock_mongo.get_documents.return_value = []
+        mock_get_mongo.return_value = mock_mongo
+
+        result = ProfileService.get_profiles(self.mock_token, self.mock_breadcrumb)
+
+        self.assertEqual(result, [])
+        # Only the mentor lookup should have run
+        mock_mongo.get_documents.assert_called_once_with(
+            "Profile", match={"name": "mike"}
         )
 
+    @patch("src.services.profile_service.Config.get_instance")
+    @patch("src.services.profile_service.MongoIO.get_instance")
+    def test_get_profiles_empty_when_no_mentees(self, mock_get_mongo, mock_get_config):
+        """Return an empty list when the mentor has no assigned mentees."""
+        mock_get_config.return_value = _make_config()
+
+        def fake_get_documents(collection_name, match=None, project=None, sort_by=None):
+            if match == {"name": "mike"}:
+                return [{"_id": MENTOR_ID, "name": "mike"}]
+            return []
+
         mock_mongo = MagicMock()
-        mock_mongo.get_collection.return_value = mock_collection
+        mock_mongo.get_documents.side_effect = fake_get_documents
         mock_get_mongo.return_value = mock_mongo
 
-        result = ProfileService.get_profiles(
-            self.mock_token, self.mock_breadcrumb, name="test"
-        )
+        result = ProfileService.get_profiles(self.mock_token, self.mock_breadcrumb)
 
-        self.assertEqual(len(result["items"]), 1)
-        find_call = mock_collection.find.call_args[0][0]
-        self.assertIn("name", find_call)
-        self.assertEqual(find_call["name"]["$regex"], "test")
-        self.assertEqual(find_call["name"]["$options"], "i")
+        self.assertEqual(result, [])
 
     @patch("src.services.profile_service.Config.get_instance")
     @patch("src.services.profile_service.MongoIO.get_instance")
-    def test_get_profiles_invalid_limit_too_small(self, mock_get_mongo, mock_get_config):
-        """Test get_profiles raises HTTPBadRequest for limit < 1."""
-        mock_config = MagicMock()
-        mock_config.PROFILE_COLLECTION_NAME = "Profile"
-        mock_get_config.return_value = mock_config
+    def test_get_profiles_propagates_unexpected_errors(
+        self, mock_get_mongo, mock_get_config
+    ):
+        """Unexpected errors propagate untouched for the route wrapper to handle."""
+        mock_get_config.return_value = _make_config()
+
         mock_mongo = MagicMock()
-        mock_mongo.get_collection.return_value = MagicMock()
+        mock_mongo.get_documents.side_effect = RuntimeError("Database error")
         mock_get_mongo.return_value = mock_mongo
 
-        with self.assertRaises(HTTPBadRequest) as context:
-            ProfileService.get_profiles(
-                self.mock_token, self.mock_breadcrumb, limit=0
-            )
-        self.assertIn("limit must be >= 1", str(context.exception))
-
-    @patch("src.services.profile_service.Config.get_instance")
-    @patch("src.services.profile_service.MongoIO.get_instance")
-    def test_get_profiles_invalid_limit_too_large(self, mock_get_mongo, mock_get_config):
-        """Test get_profiles raises HTTPBadRequest for limit > 100."""
-        mock_config = MagicMock()
-        mock_config.PROFILE_COLLECTION_NAME = "Profile"
-        mock_get_config.return_value = mock_config
-        mock_mongo = MagicMock()
-        mock_mongo.get_collection.return_value = MagicMock()
-        mock_get_mongo.return_value = mock_mongo
-
-        with self.assertRaises(HTTPBadRequest) as context:
-            ProfileService.get_profiles(
-                self.mock_token, self.mock_breadcrumb, limit=101
-            )
-        self.assertIn("limit must be <= 100", str(context.exception))
-
-    @patch("src.services.profile_service.Config.get_instance")
-    @patch("src.services.profile_service.MongoIO.get_instance")
-    def test_get_profiles_invalid_sort_by(self, mock_get_mongo, mock_get_config):
-        """Test get_profiles raises HTTPBadRequest for invalid sort_by."""
-        mock_config = MagicMock()
-        mock_config.PROFILE_COLLECTION_NAME = "Profile"
-        mock_get_config.return_value = mock_config
-        mock_mongo = MagicMock()
-        mock_mongo.get_collection.return_value = MagicMock()
-        mock_get_mongo.return_value = mock_mongo
-
-        with self.assertRaises(HTTPBadRequest) as context:
-            ProfileService.get_profiles(
-                self.mock_token,
-                self.mock_breadcrumb,
-                sort_by="invalid_field",
-            )
-        self.assertIn("sort_by must be one of", str(context.exception))
-
-    @patch("src.services.profile_service.Config.get_instance")
-    @patch("src.services.profile_service.MongoIO.get_instance")
-    def test_get_profiles_invalid_order(self, mock_get_mongo, mock_get_config):
-        """Test get_profiles raises HTTPBadRequest for invalid order."""
-        mock_config = MagicMock()
-        mock_config.PROFILE_COLLECTION_NAME = "Profile"
-        mock_get_config.return_value = mock_config
-        mock_mongo = MagicMock()
-        mock_mongo.get_collection.return_value = MagicMock()
-        mock_get_mongo.return_value = mock_mongo
-
-        with self.assertRaises(HTTPBadRequest) as context:
-            ProfileService.get_profiles(
-                self.mock_token,
-                self.mock_breadcrumb,
-                order="invalid",
-            )
-        self.assertIn("order must be 'asc' or 'desc'", str(context.exception))
-
-    @patch("src.services.profile_service.Config.get_instance")
-    @patch("src.services.profile_service.MongoIO.get_instance")
-    def test_get_profiles_invalid_after_id(self, mock_get_mongo, mock_get_config):
-        """Test get_profiles raises HTTPBadRequest for invalid after_id."""
-        mock_config = MagicMock()
-        mock_config.PROFILE_COLLECTION_NAME = "Profile"
-        mock_get_config.return_value = mock_config
-        mock_mongo = MagicMock()
-        mock_mongo.get_collection.return_value = MagicMock()
-        mock_get_mongo.return_value = mock_mongo
-
-        with self.assertRaises(HTTPBadRequest) as context:
-            ProfileService.get_profiles(
-                self.mock_token,
-                self.mock_breadcrumb,
-                after_id="invalid",
-            )
-        self.assertIn("after_id must be a valid MongoDB ObjectId", str(context.exception))
+        # The service no longer rewraps into HTTPInternalServerError; the raw
+        # error surfaces so handle_route_exceptions can produce the 500.
+        with self.assertRaises(RuntimeError):
+            ProfileService.get_profiles(self.mock_token, self.mock_breadcrumb)
 
     @patch("src.services.profile_service.Config.get_instance")
     @patch("src.services.profile_service.MongoIO.get_instance")
     def test_get_profile_success(self, mock_get_mongo, mock_get_config):
         """Test successful retrieval of a specific profile document."""
-        mock_config = MagicMock()
-        mock_config.PROFILE_COLLECTION_NAME = "Profile"
-        mock_get_config.return_value = mock_config
+        mock_get_config.return_value = _make_config()
 
         mock_mongo = MagicMock()
         mock_mongo.get_document.return_value = {
@@ -214,67 +194,58 @@ class TestProfileService(unittest.TestCase):
 
     @patch("src.services.profile_service.Config.get_instance")
     @patch("src.services.profile_service.MongoIO.get_instance")
+    def test_get_profile_forbidden_without_mentor_role(
+        self, mock_get_mongo, mock_get_config
+    ):
+        """Single-profile reads also require the mentor role."""
+        mock_get_config.return_value = _make_config()
+        mock_mongo = MagicMock()
+        mock_get_mongo.return_value = mock_mongo
+
+        non_mentor_token = {"user_id": "carol", "roles": []}
+        with self.assertRaises(HTTPForbidden):
+            ProfileService.get_profile("123", non_mentor_token, self.mock_breadcrumb)
+        mock_mongo.get_document.assert_not_called()
+
+    @patch("src.services.profile_service.Config.get_instance")
+    @patch("src.services.profile_service.MongoIO.get_instance")
     def test_get_profile_not_found(self, mock_get_mongo, mock_get_config):
         """Test get_profile raises HTTPNotFound when document not found."""
-        mock_config = MagicMock()
-        mock_config.PROFILE_COLLECTION_NAME = "Profile"
-        mock_get_config.return_value = mock_config
+        mock_get_config.return_value = _make_config()
 
         mock_mongo = MagicMock()
         mock_mongo.get_document.return_value = None
         mock_get_mongo.return_value = mock_mongo
 
         with self.assertRaises(HTTPNotFound) as context:
-            ProfileService.get_profile(
-                "999", self.mock_token, self.mock_breadcrumb
-            )
+            ProfileService.get_profile("999", self.mock_token, self.mock_breadcrumb)
         self.assertIn("999", str(context.exception))
 
     @patch("src.services.profile_service.Config.get_instance")
     @patch("src.services.profile_service.MongoIO.get_instance")
-    def test_get_profiles_handles_exception(
+    def test_get_profile_propagates_unexpected_errors(
         self, mock_get_mongo, mock_get_config
     ):
-        """Test get_profiles handles exceptions properly."""
-        mock_config = MagicMock()
-        mock_config.PROFILE_COLLECTION_NAME = "Profile"
-        mock_get_config.return_value = mock_config
-
-        mock_collection = MagicMock()
-        mock_collection.find.side_effect = Exception("Database error")
+        """Unexpected errors propagate untouched for the route wrapper to handle."""
+        mock_get_config.return_value = _make_config()
 
         mock_mongo = MagicMock()
-        mock_mongo.get_collection.return_value = mock_collection
+        mock_mongo.get_document.side_effect = RuntimeError("Database error")
         mock_get_mongo.return_value = mock_mongo
 
-        with self.assertRaises(HTTPInternalServerError):
-            ProfileService.get_profiles(
-                self.mock_token, self.mock_breadcrumb
-            )
+        with self.assertRaises(RuntimeError):
+            ProfileService.get_profile("123", self.mock_token, self.mock_breadcrumb)
 
-    @patch("src.services.profile_service.Config.get_instance")
-    @patch("src.services.profile_service.MongoIO.get_instance")
-    def test_get_profile_handles_exception(
-        self, mock_get_mongo, mock_get_config
-    ):
-        """Test get_profile handles exceptions properly."""
-        mock_config = MagicMock()
-        mock_config.PROFILE_COLLECTION_NAME = "Profile"
-        mock_get_config.return_value = mock_config
-
-        mock_mongo = MagicMock()
-        mock_mongo.get_document.side_effect = Exception("Database error")
-        mock_get_mongo.return_value = mock_mongo
-
-        with self.assertRaises(HTTPInternalServerError):
-            ProfileService.get_profile(
-                "123", self.mock_token, self.mock_breadcrumb
-            )
-
-    def test_check_permission_placeholder(self):
-        """Test that _check_permission is a placeholder that allows all operations."""
+    def test_check_permission_allows_mentor(self):
+        """A token with the mentor role passes the permission check."""
         ProfileService._check_permission(self.mock_token, "read")
-        self.assertTrue(True)
+
+    def test_check_permission_denies_non_mentor(self):
+        """A token without the mentor role raises HTTPForbidden."""
+        with self.assertRaises(HTTPForbidden):
+            ProfileService._check_permission(
+                {"user_id": "carol", "roles": ["coordinator"]}, "read"
+            )
 
 
 if __name__ == "__main__":

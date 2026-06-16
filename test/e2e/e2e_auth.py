@@ -19,7 +19,9 @@ _DEFAULT_JWT_AUDIENCE = "dev-api"
 _DEFAULT_JWT_ALGORITHM = "HS256"
 
 _E2E_SUBJECT = "adam"
-_E2E_ROLES = ("admin",)
+# The Profile domain enforces the "mentor" role (see ProfileService._check_permission);
+# include it alongside "admin" so black-box Profile tests exercise the success path.
+_E2E_ROLES = ("admin", "mentor")
 
 
 def get_auth_token() -> str:

@@ -10,6 +10,7 @@ To run these tests:
 
 API runs on port 8391 (same for dev and api).
 """
+
 import pytest
 import requests
 
@@ -26,33 +27,27 @@ def _err(response, expected):
 
 @pytest.mark.e2e
 def test_get_profiles_endpoint():
-    """Test GET /api/profile endpoint."""
+    """Test GET /api/profile returns the Mentor Dashboard array."""
     token = get_auth_token()
     headers = {"Authorization": f"Bearer {token}"}
     response = requests.get(f"{BASE_URL}/api/profile", headers=headers)
     assert response.status_code == 200, _err(response, 200)
 
     response_data = response.json()
-    assert isinstance(response_data, dict), "Response should be a dict (infinite scroll format)"
-    assert "items" in response_data, "Response should have 'items' key"
-    assert "limit" in response_data, "Response should have 'limit' key"
-    assert "has_more" in response_data, "Response should have 'has_more' key"
-    assert "next_cursor" in response_data, "Response should have 'next_cursor' key"
-    assert isinstance(response_data["items"], list), "Items should be a list"
-
-
-@pytest.mark.e2e
-def test_get_profiles_with_name_filter():
-    """Test GET /api/profile with name query parameter."""
-    token = get_auth_token()
-    headers = {"Authorization": f"Bearer {token}"}
-    response = requests.get(f"{BASE_URL}/api/profile?name=test", headers=headers)
-    assert response.status_code == 200, _err(response, 200)
-
-    response_data = response.json()
-    assert isinstance(response_data, dict), "Response should be a dict (infinite scroll format)"
-    assert "items" in response_data, "Response should have 'items' key"
-    assert isinstance(response_data["items"], list), "Items should be a list"
+    assert isinstance(
+        response_data, list
+    ), "Response should be a list of dashboard cards"
+    for card in response_data:
+        assert "_id" in card, "Each card should have an '_id'"
+        assert "name" in card, "Each card should have a 'name'"
+        assert "progress" in card, "Each card should have a 'progress' object"
+        progress = card["progress"]
+        assert set(["library", "now", "next"]).issubset(
+            progress.keys()
+        ), "progress should report library/now/next counts"
+        assert (
+            "last_encounter" in card
+        ), "Each card should have a 'last_encounter' field"
 
 
 @pytest.mark.e2e
