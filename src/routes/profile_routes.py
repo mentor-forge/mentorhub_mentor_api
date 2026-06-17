@@ -3,6 +3,7 @@ Profile routes for Flask API.
 
 Provides endpoints for Profile domain:
 - GET /api/profile - Get the Mentor Dashboard for the current user
+- GET /api/profile/<id>/properties - Aggregated mentee activity for Properties hub
 - GET /api/profile/<id> - Get a specific profile document by ID
 """
 
@@ -49,6 +50,26 @@ def create_profile_routes():
 
         logger.info(
             f"get_profiles Success {str(breadcrumb['at_time'])}, {breadcrumb['correlation_id']}"
+        )
+        return jsonify(result), 200
+
+    @profile_routes.route("/<profile_id>/properties", methods=["GET"])
+    @handle_route_exceptions
+    def get_profile_properties(profile_id):
+        """
+        GET /api/profile/<id>/properties - Aggregated mentee activity view.
+
+        Returns journey resources, mentor history, usage, and celebrations.
+        """
+        token = create_flask_token()
+        breadcrumb = create_flask_breadcrumb(token)
+
+        result = ProfileService.get_profile_properties(
+            profile_id, token, breadcrumb
+        )
+        logger.info(
+            f"get_profile_properties Success {str(breadcrumb['at_time'])}, "
+            f"{breadcrumb['correlation_id']}"
         )
         return jsonify(result), 200
 

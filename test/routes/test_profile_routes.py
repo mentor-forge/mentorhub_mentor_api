@@ -94,6 +94,44 @@ class TestProfileRoutes(unittest.TestCase):
 
     @patch("src.routes.profile_routes.create_flask_token")
     @patch("src.routes.profile_routes.create_flask_breadcrumb")
+    @patch("src.routes.profile_routes.ProfileService.get_profile_properties")
+    def test_get_profile_properties_success(
+        self,
+        mock_get_profile_properties,
+        mock_create_breadcrumb,
+        mock_create_token,
+    ):
+        """Test GET /api/profile/<id>/properties for successful response."""
+        mock_create_token.return_value = self.mock_token
+        mock_create_breadcrumb.return_value = self.mock_breadcrumb
+
+        mock_get_profile_properties.return_value = {
+            "profile": {"_id": "123", "name": "daniel"},
+            "status_summary": {
+                "library_count": 1,
+                "now_count": 0,
+                "next_count": 0,
+                "encounters_count": 0,
+                "resources_engaged": 1,
+            },
+            "sites_and_links": [],
+            "mentor_history": [],
+            "journey": None,
+            "path": None,
+            "resource_usage": [],
+            "celebrations": [],
+        }
+
+        response = self.client.get("/api/profile/123/properties")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json["profile"]["name"], "daniel")
+        mock_get_profile_properties.assert_called_once_with(
+            "123", self.mock_token, self.mock_breadcrumb
+        )
+
+    @patch("src.routes.profile_routes.create_flask_token")
+    @patch("src.routes.profile_routes.create_flask_breadcrumb")
     @patch("src.routes.profile_routes.ProfileService.get_profile")
     def test_get_profile_success(
         self,
