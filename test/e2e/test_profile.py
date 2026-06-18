@@ -94,3 +94,46 @@ def test_profile_endpoints_require_auth():
     """Test that profile endpoints require authentication."""
     response = requests.get(f"{BASE_URL}/api/profile")
     assert response.status_code == 401, f"Expected 401, got {response.status_code}"
+
+
+@pytest.mark.e2e
+def test_get_profile_properties_endpoint():
+    """Test GET /api/profile/<id>/properties returns aggregated Properties hub."""
+    token = get_auth_token()
+    headers = {"Authorization": f"Bearer {token}"}
+
+    list_response = requests.get(f"{BASE_URL}/api/profile", headers=headers)
+    assert list_response.status_code == 200, _err(list_response, 200)
+    cards = list_response.json()
+    if not cards:
+        pytest.skip("No mentee cards on dashboard; cannot test properties")
+
+    profile_id = cards[0]["_id"]
+    response = requests.get(
+        f"{BASE_URL}/api/profile/{profile_id}/properties",
+        headers=headers,
+    )
+    assert response.status_code == 200, _err(response, 200)
+
+    data = response.json()
+    for key in (
+        "profile",
+        "status_summary",
+        "sites_and_links",
+        "mentor_history",
+        "resource_usage",
+        "celebrations",
+    ):
+        assert key in data, f"Response should include '{key}'"
+
+
+@pytest.mark.e2e
+def test_get_profile_properties_not_found():
+    """Test GET /api/profile/<id>/properties with non-existent ID."""
+    token = get_auth_token()
+    headers = {"Authorization": f"Bearer {token}"}
+    response = requests.get(
+        f"{BASE_URL}/api/profile/000000000000000000000000/properties",
+        headers=headers,
+    )
+    assert response.status_code == 404, _err(response, 404)
