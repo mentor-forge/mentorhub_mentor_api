@@ -79,4 +79,4 @@ The agent must not update files outside this list.
 - E2E/packaging verification: **deferred** — local dev server/e2e can't run in this environment (placeholder `MONGO_CONNECTION_STRING` default + editable `api_utils` `MongoIO` errors when unconnected; backgrounded servers don't persist). Run `pipenv run api && pipenv run e2e` in a configured environment to complete this step.
 
 **Follow-ups**
-- Replace `getattr(config, "MENTEE_COLLECTION_NAME", "Mentee")` with the real `Config.MENTEE_COLLECTION_NAME` once api_utils exposes it.
+- DONE (2026-06-18): api_utils bumped to 0.2.2 (which adds `MENTEE_COLLECTION_NAME="Mentee"`); `MenteeService._collection_name` now returns `config.MENTEE_COLLECTION_NAME` directly (getattr fallback removed). Pipfile/Pipfile.lock updated.

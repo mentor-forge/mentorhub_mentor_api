@@ -47,14 +47,8 @@ class MenteeService:
 
     @staticmethod
     def _collection_name(config):
-        """
-        Resolve the Mentee collection name.
-
-        There is no ``Config.MENTEE_COLLECTION_NAME`` in the installed
-        api_utils yet, so fall back to the literal ``"Mentee"``. Once the
-        constant is added upstream this picks it up automatically.
-        """
-        return getattr(config, "MENTEE_COLLECTION_NAME", "Mentee")
+        """Resolve the Mentee collection name from shared config."""
+        return config.MENTEE_COLLECTION_NAME
 
     @staticmethod
     def _check_permission(token, operation):

@@ -34,7 +34,9 @@ class TestMenteeService(unittest.TestCase):
     @patch("src.services.mentee_service.MongoIO.get_instance")
     def test_get_mentee_existing(self, mock_get_mongo, mock_get_config):
         """get_mentee returns the existing document when one is found."""
-        mock_get_config.return_value = MagicMock(spec=[])
+        mock_get_config.return_value = MagicMock(
+            spec=["MENTEE_COLLECTION_NAME"], MENTEE_COLLECTION_NAME="Mentee"
+        )
 
         existing = {"_id": ObjectId(MENTEE_ID), "profile_id": ObjectId(PROFILE_ID)}
         mock_mongo = MagicMock()
@@ -56,7 +58,9 @@ class TestMenteeService(unittest.TestCase):
     @patch("src.services.mentee_service.MongoIO.get_instance")
     def test_get_mentee_creates_when_missing(self, mock_get_mongo, mock_get_config):
         """get_mentee creates a schema-valid default document when none exists."""
-        mock_get_config.return_value = MagicMock(spec=[])
+        mock_get_config.return_value = MagicMock(
+            spec=["MENTEE_COLLECTION_NAME"], MENTEE_COLLECTION_NAME="Mentee"
+        )
 
         created_doc = {
             "_id": ObjectId(MENTEE_ID),
@@ -93,7 +97,9 @@ class TestMenteeService(unittest.TestCase):
     @patch("src.services.mentee_service.MongoIO.get_instance")
     def test_get_mentee_invalid_profile_id(self, mock_get_mongo, mock_get_config):
         """get_mentee raises HTTPBadRequest for an invalid profile_id."""
-        mock_get_config.return_value = MagicMock(spec=[])
+        mock_get_config.return_value = MagicMock(
+            spec=["MENTEE_COLLECTION_NAME"], MENTEE_COLLECTION_NAME="Mentee"
+        )
         mock_mongo = MagicMock()
         mock_get_mongo.return_value = mock_mongo
 
@@ -109,7 +115,9 @@ class TestMenteeService(unittest.TestCase):
         self, mock_get_mongo, mock_get_config
     ):
         """Callers lacking the mentor role are denied before any DB access."""
-        mock_get_config.return_value = MagicMock(spec=[])
+        mock_get_config.return_value = MagicMock(
+            spec=["MENTEE_COLLECTION_NAME"], MENTEE_COLLECTION_NAME="Mentee"
+        )
         mock_mongo = MagicMock()
         mock_get_mongo.return_value = mock_mongo
 
@@ -122,7 +130,9 @@ class TestMenteeService(unittest.TestCase):
     @patch("src.services.mentee_service.MongoIO.get_instance")
     def test_update_mentee_success(self, mock_get_mongo, mock_get_config):
         """update_mentee writes $set data, stamps saved, and returns the doc."""
-        mock_get_config.return_value = MagicMock(spec=[])
+        mock_get_config.return_value = MagicMock(
+            spec=["MENTEE_COLLECTION_NAME"], MENTEE_COLLECTION_NAME="Mentee"
+        )
 
         mock_mongo = MagicMock()
         mock_mongo.update_document.return_value = {
@@ -151,7 +161,9 @@ class TestMenteeService(unittest.TestCase):
         self, mock_get_mongo, mock_get_config
     ):
         """update_mentee raises HTTPForbidden for restricted fields."""
-        mock_get_config.return_value = MagicMock(spec=[])
+        mock_get_config.return_value = MagicMock(
+            spec=["MENTEE_COLLECTION_NAME"], MENTEE_COLLECTION_NAME="Mentee"
+        )
         mock_mongo = MagicMock()
         mock_get_mongo.return_value = mock_mongo
 
@@ -170,7 +182,9 @@ class TestMenteeService(unittest.TestCase):
     @patch("src.services.mentee_service.MongoIO.get_instance")
     def test_update_mentee_not_found(self, mock_get_mongo, mock_get_config):
         """update_mentee raises HTTPNotFound when the document is missing."""
-        mock_get_config.return_value = MagicMock(spec=[])
+        mock_get_config.return_value = MagicMock(
+            spec=["MENTEE_COLLECTION_NAME"], MENTEE_COLLECTION_NAME="Mentee"
+        )
 
         mock_mongo = MagicMock()
         mock_mongo.update_document.return_value = None
@@ -186,7 +200,9 @@ class TestMenteeService(unittest.TestCase):
     @patch("src.services.mentee_service.MongoIO.get_instance")
     def test_update_mentee_invalid_id(self, mock_get_mongo, mock_get_config):
         """update_mentee raises HTTPBadRequest for an invalid mentee_id."""
-        mock_get_config.return_value = MagicMock(spec=[])
+        mock_get_config.return_value = MagicMock(
+            spec=["MENTEE_COLLECTION_NAME"], MENTEE_COLLECTION_NAME="Mentee"
+        )
         mock_mongo = MagicMock()
         mock_get_mongo.return_value = mock_mongo
 
@@ -202,7 +218,9 @@ class TestMenteeService(unittest.TestCase):
         self, mock_get_mongo, mock_get_config
     ):
         """update_mentee requires the mentor role before any DB access."""
-        mock_get_config.return_value = MagicMock(spec=[])
+        mock_get_config.return_value = MagicMock(
+            spec=["MENTEE_COLLECTION_NAME"], MENTEE_COLLECTION_NAME="Mentee"
+        )
         mock_mongo = MagicMock()
         mock_get_mongo.return_value = mock_mongo
 
@@ -217,7 +235,9 @@ class TestMenteeService(unittest.TestCase):
     @patch("src.services.mentee_service.MongoIO.get_instance")
     def test_get_mentee_handles_exception(self, mock_get_mongo, mock_get_config):
         """get_mentee wraps unexpected database errors as HTTPInternalServerError."""
-        mock_get_config.return_value = MagicMock(spec=[])
+        mock_get_config.return_value = MagicMock(
+            spec=["MENTEE_COLLECTION_NAME"], MENTEE_COLLECTION_NAME="Mentee"
+        )
 
         mock_mongo = MagicMock()
         mock_mongo.get_documents.side_effect = Exception("Database error")
@@ -230,7 +250,9 @@ class TestMenteeService(unittest.TestCase):
     @patch("src.services.mentee_service.MongoIO.get_instance")
     def test_update_mentee_handles_exception(self, mock_get_mongo, mock_get_config):
         """update_mentee wraps unexpected database errors as HTTPInternalServerError."""
-        mock_get_config.return_value = MagicMock(spec=[])
+        mock_get_config.return_value = MagicMock(
+            spec=["MENTEE_COLLECTION_NAME"], MENTEE_COLLECTION_NAME="Mentee"
+        )
 
         mock_mongo = MagicMock()
         mock_mongo.update_document.side_effect = Exception("Database error")
@@ -252,13 +274,8 @@ class TestMenteeService(unittest.TestCase):
                 {"user_id": "carol", "roles": ["coordinator"]}, "read"
             )
 
-    def test_collection_name_falls_back_to_literal(self):
-        """Without Config.MENTEE_COLLECTION_NAME, the literal 'Mentee' is used."""
-        config_without_attr = MagicMock(spec=[])
-        self.assertEqual(MenteeService._collection_name(config_without_attr), "Mentee")
-
-    def test_collection_name_uses_config_when_present(self):
-        """When the config exposes the constant, it is preferred."""
+    def test_collection_name_uses_config(self):
+        """The collection name is read from Config.MENTEE_COLLECTION_NAME."""
         config = MagicMock()
         config.MENTEE_COLLECTION_NAME = "MenteeCustom"
         self.assertEqual(MenteeService._collection_name(config), "MenteeCustom")
