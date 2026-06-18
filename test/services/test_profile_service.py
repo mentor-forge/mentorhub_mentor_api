@@ -19,7 +19,6 @@ def _make_config():
     mock_config.PROFILE_COLLECTION_NAME = "Profile"
     mock_config.JOURNEY_COLLECTION_NAME = "Journey"
     mock_config.ENCOUNTER_COLLECTION_NAME = "Encounter"
-    mock_config.RESOURCE_COLLECTION_NAME = "Resource"
     return mock_config
 
 
@@ -246,80 +245,6 @@ class TestProfileService(unittest.TestCase):
         with self.assertRaises(HTTPForbidden):
             ProfileService._check_permission(
                 {"user_id": "carol", "roles": ["coordinator"]}, "read"
-            )
-
-    @patch("src.services.profile_service.Config.get_instance")
-    @patch("src.services.profile_service.MongoIO.get_instance")
-    def test_get_profile_properties_success(self, mock_get_mongo, mock_get_config):
-        """Properties hub aggregates journey resources and mentor history."""
-        mock_get_config.return_value = _make_config()
-        resource_id = ObjectId("507f1f77bcf86cd7994390bb")
-
-        def fake_get_document(collection_name, doc_id):
-            if collection_name == "Profile" and doc_id == str(MENTEE_1_ID):
-                return {"_id": MENTEE_1_ID, "name": "daniel", "status": "active"}
-            if collection_name == "Resource" and doc_id == str(resource_id):
-                return {
-                    "_id": resource_id,
-                    "name": "async-patterns",
-                    "url": "https://example.com/async",
-                }
-            if collection_name == "Profile" and doc_id == str(MENTOR_ID):
-                return {"_id": MENTOR_ID, "name": "mike"}
-            return None
-
-        def fake_get_documents(collection_name, match=None, project=None, sort_by=None):
-            if collection_name == "Journey":
-                return [
-                    {
-                        "status": "active",
-                        "library": [
-                            {
-                                "resource_id": resource_id,
-                                "completed": "2025-02-01T00:00:00Z",
-                            }
-                        ],
-                        "now": [],
-                        "next": [],
-                    }
-                ]
-            if collection_name == "Encounter":
-                return [
-                    {
-                        "mentor_id": MENTOR_ID,
-                        "date": "2025-02-01T00:00:00Z",
-                    }
-                ]
-            return []
-
-        mock_mongo = MagicMock()
-        mock_mongo.get_document.side_effect = fake_get_document
-        mock_mongo.get_documents.side_effect = fake_get_documents
-        mock_get_mongo.return_value = mock_mongo
-
-        result = ProfileService.get_profile_properties(
-            str(MENTEE_1_ID), self.mock_token, self.mock_breadcrumb
-        )
-
-        self.assertEqual(result["profile"]["name"], "daniel")
-        self.assertEqual(result["status_summary"]["library_count"], 1)
-        self.assertEqual(len(result["sites_and_links"]), 1)
-        self.assertEqual(result["sites_and_links"][0]["url"], "https://example.com/async")
-        self.assertEqual(len(result["celebrations"]), 1)
-        self.assertEqual(result["mentor_history"][0]["mentor_name"], "mike")
-
-    @patch("src.services.profile_service.Config.get_instance")
-    @patch("src.services.profile_service.MongoIO.get_instance")
-    def test_get_profile_properties_not_found(self, mock_get_mongo, mock_get_config):
-        """Properties hub returns 404 when the mentee profile does not exist."""
-        mock_get_config.return_value = _make_config()
-        mock_mongo = MagicMock()
-        mock_mongo.get_document.return_value = None
-        mock_get_mongo.return_value = mock_mongo
-
-        with self.assertRaises(HTTPNotFound):
-            ProfileService.get_profile_properties(
-                "999", self.mock_token, self.mock_breadcrumb
             )
 
 

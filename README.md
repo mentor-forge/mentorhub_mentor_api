@@ -63,24 +63,6 @@ see the [Open API Specifications](./docs/openapi.yaml) for details on the API
 
 For E2E, mint a Bearer token via `test/e2e/e2e_auth.py` (`get_auth_token()`) with `pipenv run dev` (matching `JWT_SECRET`).
 
-### Profile domain (mentor dashboard + mentee detail)
-
-| Method | Path | Purpose |
-|--------|------|---------|
-| `GET` | `/api/profile` | Mentor dashboard — mentee cards for the logged-in mentor |
-| `GET` | `/api/profile/{profileId}` | Single mentee Profile document (read-only) |
-| `GET` | `/api/profile/{profileId}/properties` | Aggregated Properties hub (journey, resources, mentors, celebrations) |
-
-All Profile routes require the **`mentor`** role. Flask serves lowercase paths (`/api/profile`); OpenAPI documents the same contract.
-
-**SPA routes (mentorhub_mentor_spa):**
-
-| SPA route | API used |
-|-----------|----------|
-| `/profiles` | `GET /api/profile` |
-| `/profiles/:id` | `GET /api/profile/:id`, `GET /api/encounter` (filter by `mentee_id`) |
-| `/profiles/:id/properties` | `GET /api/profile/:id/properties` |
-
 ### Simple Curl Commands:
 ```bash
 # Bearer token for local dev (same JWT settings as pipenv run dev / e2e):
@@ -88,18 +70,6 @@ export TOKEN="$(PYTHONPATH=. pipenv run python -c 'from test.e2e.e2e_auth import
 
 # Get the API Configuration
 curl http://localhost:8391/api/config \
-  -H "Authorization: Bearer $TOKEN"
-
-# Mentor dashboard (mentee cards)
-curl http://localhost:8391/api/profile \
-  -H "Authorization: Bearer $TOKEN"
-
-# Single mentee profile (replace MENTEE_ID)
-curl http://localhost:8391/api/profile/MENTEE_ID \
-  -H "Authorization: Bearer $TOKEN"
-
-# Mentee Properties hub (replace MENTEE_ID)
-curl http://localhost:8391/api/profile/MENTEE_ID/properties \
   -H "Authorization: Bearer $TOKEN"
 
 ```
