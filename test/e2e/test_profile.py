@@ -51,6 +51,33 @@ def test_get_profiles_endpoint():
 
 
 @pytest.mark.e2e
+def test_get_profile_detail_returns_composite():
+    """GET /api/profile/<id> returns the {profile, mentee, encounters} composite."""
+    token = get_auth_token()
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # Resolve a real mentee id from the dashboard list.
+    list_response = requests.get(f"{BASE_URL}/api/profile", headers=headers)
+    assert list_response.status_code == 200, _err(list_response, 200)
+    cards = list_response.json()
+    if not cards:
+        pytest.skip("No mentees available to exercise the profile detail view")
+
+    profile_id = cards[0]["_id"]
+    response = requests.get(f"{BASE_URL}/api/profile/{profile_id}", headers=headers)
+    assert response.status_code == 200, _err(response, 200)
+
+    detail = response.json()
+    assert set(["profile", "mentee", "encounters"]).issubset(
+        detail.keys()
+    ), "Detail should expose profile, mentee, and encounters"
+    assert isinstance(detail["profile"], dict), "profile should be an object"
+    assert isinstance(detail["mentee"], dict), "mentee should be an object"
+    assert isinstance(detail["encounters"], list), "encounters should be a list"
+    assert detail["profile"].get("_id") == profile_id, "profile should match the id"
+
+
+@pytest.mark.e2e
 def test_get_profile_not_found():
     """Test GET /api/profile/<id> with non-existent ID."""
     token = get_auth_token()

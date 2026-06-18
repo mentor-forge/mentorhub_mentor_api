@@ -1,6 +1,6 @@
 # L030 – Update Profile service to return the composite detail view
 
-**Status**: Pending  
+**Status**: Shipped  
 **Type**: Feature  
 **Depends On**: L020  
 **Description**: Update `ProfileService.get_profile` so `GET /api/profile/{_id}` returns the composite detail view from L010 — the `Profile` plus the related mentee notes and the mentee's `Encounter` list. Assemble it with **service-to-service** calls (the profile service calls `MenteeService.get_mentee` and the encounter service), not direct cross-collection MongoDB access. The aggregation should resemble the `get_profiles` dashboard method already in this service.
@@ -58,4 +58,16 @@ The agent must not update files outside this list.
 
 ## Execution Notes
 
-_Reserved for the task execution agent._
+**Summary of changes**
+- `src/services/profile_service.py`: `get_profile` now returns the `ProfileDetail` composite `{profile, mentee, encounters}`. `profile` read directly; `mentee` via `MenteeService.get_mentee` (create-if-missing); `encounters` via `EncounterService` (service-to-service). Services imported inside the method to avoid import cycles. `_check_permission` unchanged (Config role constants deferred to L050). `get_profiles` left untouched.
+- `test/services/test_profile_service.py`: composite test mocking `MenteeService`/`EncounterService`, asserting service-to-service calls and no direct cross-collection access.
+- `test/e2e/test_profile.py`: asserts `GET /api/profile/{id}` returns `{profile, mentee, encounters}`.
+
+**Testing results**
+- `pipenv run test`: 173 passed, 27 deselected.
+- `pipenv run build`: clean.
+- Lint: all 3 changed files black-clean.
+- E2E/packaging verification: deferred to a configured environment (see L020 notes).
+
+**Follow-ups**
+- Encounters are currently fetched via `EncounterService.get_encounters(limit=100)` and filtered to the mentee in `profile_service` (interim). L040 adds a dedicated per-mentee encounter read in `EncounterService` and moves the filtering there.

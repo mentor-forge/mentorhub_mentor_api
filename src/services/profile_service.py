@@ -176,19 +176,26 @@ class ProfileService:
     @staticmethod
     def get_profile(profile_id, token, breadcrumb):
         """
-        Retrieve a specific profile document by ID.
+        Build the composite Profile detail view for a single mentee.
+
+        Returns the ``ProfileDetail`` document defined by the OpenAPI contract:
+        the mentee's ``Profile`` plus the related mentee-notes document and the
+        full list of the mentee's ``Encounter`` documents. The related domains
+        are assembled with **service-to-service** calls (``MenteeService`` and
+        ``EncounterService``); this service never reads the Mentee/Encounter
+        collections directly for the composite.
 
         Args:
-            profile_id: The profile ID to retrieve
+            profile_id: The mentee Profile ID to retrieve
             token: Token dictionary with user_id and roles
             breadcrumb: Breadcrumb dictionary for logging
 
         Returns:
-            dict: The profile document
+            dict: ``{"profile": ..., "mentee": ..., "encounters": [...]}``
 
         Raises:
             HTTPForbidden: If the caller does not hold the ``mentor`` role
-            HTTPNotFound: If profile is not found
+            HTTPNotFound: If the Profile is not found
         """
         ProfileService._check_permission(token, "read")
 
@@ -198,5 +205,44 @@ class ProfileService:
         if profile is None:
             raise HTTPNotFound(f"Profile {profile_id} not found")
 
-        logger.info(f"Retrieved profile {profile_id} for user {token.get('user_id')}")
-        return profile
+        # Imported lazily so the Mentee/Encounter services (which do not import
+        # ProfileService) never create an import cycle.
+        from src.services.mentee_service import MenteeService
+
+        mentee = MenteeService.get_mentee(profile_id, token, breadcrumb)
+        encounters = ProfileService._mentee_encounters(profile_id, token, breadcrumb)
+
+        logger.info(
+            f"Built profile detail for {profile_id} with {len(encounters)} "
+            f"encounters for user {token.get('user_id')}"
+        )
+        return {"profile": profile, "mentee": mentee, "encounters": encounters}
+
+    @staticmethod
+    def _mentee_encounters(profile_id, token, breadcrumb):
+        """
+        Fetch a mentee's Encounters through the Encounter service.
+
+        Cross-collection reads must go through the owning service, so this asks
+        ``EncounterService`` for encounters and keeps the ones linked to this
+        mentee (``Encounter.mentee_id`` is the mentee's Profile id), most-recent
+        first. ``EncounterService`` only exposes the shared list reader today;
+        L040 moves a dedicated per-mentee read (and the recent-encounter logic)
+        into ``EncounterService``.
+
+        Args:
+            profile_id: The mentee Profile id whose encounters are wanted
+            token: Token dictionary with user_id and roles
+            breadcrumb: Breadcrumb dictionary for logging
+
+        Returns:
+            list[dict]: The mentee's Encounter documents, most recent first.
+        """
+        from src.services.encounter_service import EncounterService
+
+        result = EncounterService.get_encounters(token, breadcrumb, limit=100)
+        items = result.get("items", []) if isinstance(result, dict) else (result or [])
+
+        mine = [e for e in items if str(e.get("mentee_id")) == str(profile_id)]
+        mine.sort(key=lambda e: e.get("date") or "", reverse=True)
+        return mine

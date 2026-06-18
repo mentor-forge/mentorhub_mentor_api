@@ -171,26 +171,74 @@ class TestProfileService(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             ProfileService.get_profiles(self.mock_token, self.mock_breadcrumb)
 
+    @patch("src.services.encounter_service.EncounterService.get_encounters")
+    @patch("src.services.mentee_service.MenteeService.get_mentee")
     @patch("src.services.profile_service.Config.get_instance")
     @patch("src.services.profile_service.MongoIO.get_instance")
-    def test_get_profile_success(self, mock_get_mongo, mock_get_config):
-        """Test successful retrieval of a specific profile document."""
+    def test_get_profile_returns_composite(
+        self, mock_get_mongo, mock_get_config, mock_get_mentee, mock_get_encounters
+    ):
+        """get_profile returns the {profile, mentee, encounters} composite."""
         mock_get_config.return_value = _make_config()
 
+        profile_id = str(MENTEE_1_ID)
+        profile_doc = {"_id": MENTEE_1_ID, "name": "daniel"}
+        mentee_doc = {"_id": ObjectId("507f1f77bcf86cd7994390bb"), "notes": "n"}
+
         mock_mongo = MagicMock()
-        mock_mongo.get_document.return_value = {
-            "_id": "123",
-            "name": "profile1",
-        }
+        mock_mongo.get_document.return_value = profile_doc
         mock_get_mongo.return_value = mock_mongo
 
+        mock_get_mentee.return_value = mentee_doc
+
+        older = {
+            "_id": ObjectId("507f1f77bcf86cd7994390a1"),
+            "mentee_id": MENTEE_1_ID,
+            "date": "2025-01-01T00:00:00Z",
+        }
+        newer = {
+            "_id": ENCOUNTER_ID,
+            "mentee_id": MENTEE_1_ID,
+            "date": "2025-03-01T00:00:00Z",
+        }
+        other_mentee = {
+            "_id": ObjectId("507f1f77bcf86cd7994390a2"),
+            "mentee_id": MENTEE_2_ID,
+            "date": "2025-06-01T00:00:00Z",
+        }
+        mock_get_encounters.return_value = {
+            "items": [older, other_mentee, newer],
+            "limit": 100,
+            "has_more": False,
+            "next_cursor": None,
+        }
+
         result = ProfileService.get_profile(
-            "123", self.mock_token, self.mock_breadcrumb
+            profile_id, self.mock_token, self.mock_breadcrumb
         )
 
-        self.assertIsNotNone(result)
-        self.assertEqual(result["_id"], "123")
-        mock_mongo.get_document.assert_called_once_with("Profile", "123")
+        # Composite shape matches the ProfileDetail contract exactly.
+        self.assertEqual(set(result.keys()), {"profile", "mentee", "encounters"})
+        self.assertEqual(result["profile"], profile_doc)
+        self.assertEqual(result["mentee"], mentee_doc)
+
+        # Only this mentee's encounters, most recent first.
+        self.assertEqual(
+            [e["_id"] for e in result["encounters"]], [ENCOUNTER_ID, older["_id"]]
+        )
+
+        # The Profile is read directly; cross-collection data is not.
+        mock_mongo.get_document.assert_called_once_with("Profile", profile_id)
+        mock_mongo.get_documents.assert_not_called()
+
+        # Related domains are fetched service-to-service.
+        mock_get_mentee.assert_called_once_with(
+            profile_id, self.mock_token, self.mock_breadcrumb
+        )
+        mock_get_encounters.assert_called_once()
+        enc_args, enc_kwargs = mock_get_encounters.call_args
+        self.assertIn(self.mock_token, enc_args)
+        self.assertIn(self.mock_breadcrumb, enc_args)
 
     @patch("src.services.profile_service.Config.get_instance")
     @patch("src.services.profile_service.MongoIO.get_instance")
