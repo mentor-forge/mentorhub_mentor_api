@@ -1,6 +1,6 @@
 # L040 – Refactor profile_service into Journey and Encounter services
 
-**Status**: Pending  
+**Status**: Shipped  
 **Type**: Feature  
 **Depends On**: L030  
 **Description**: Clean up `profile_service.py` by extracting domain logic into dedicated services: move the learning-journey aggregation into a new `JourneyService` and the encounter logic into the existing `EncounterService`. `ProfileService` should then compose its dashboard (`get_profiles`) and detail (`get_profile`) responses via **service-to-service** calls rather than holding all of this logic itself. This is a behavior-preserving refactor.
@@ -61,4 +61,17 @@ The agent must not update files outside this list.
 
 ## Execution Notes
 
-_Reserved for the task execution agent._
+**Summary of changes** (behavior-preserving refactor)
+- `src/services/journey_service.py` (new): `JourneyService.get_journey_progress(profile_id, token, breadcrumb)` → `{library, now, next}` (zeros when no active journey). Extracted from `ProfileService._journey_progress`.
+- `src/services/encounter_service.py`: added `get_recent_encounter(mentee_id, token, breadcrumb)` (most-recent summary or None) and `get_encounters_for_mentee(mentee_id, token, breadcrumb)` (mentee's encounters, most-recent first; direct `mentee_id` match + sort). Helper `_normalize_mentee_id` handles str/ObjectId. Replaces L030's interim limit-then-filter.
+- `src/services/profile_service.py`: `get_profiles` and `get_profile` now delegate to `JourneyService`/`EncounterService` (service-to-service); removed `_journey_progress`, `_recent_encounter`, `_mentee_encounters`. Response shapes unchanged.
+- Tests: new `test_journey_service.py`; updated `test_encounter_service.py` and `test_profile_service.py` (assert delegation, shapes unchanged).
+
+**Testing results**
+- `pipenv run test`: 184 passed, 27 deselected (+11 new).
+- `pipenv run build`: clean.
+- Lint: all 6 changed/created files black-clean.
+- E2E/packaging verification: deferred to a configured environment (see L020 notes).
+
+**Follow-ups**
+- None specific; `JourneyService` could later own additional journey reads if needed.

@@ -15,7 +15,7 @@ responses.
 
 from api_utils import MongoIO, Config
 from api_utils.flask_utils.exceptions import HTTPForbidden, HTTPNotFound
-from pymongo import ASCENDING, DESCENDING
+from pymongo import ASCENDING
 import logging
 
 logger = logging.getLogger(__name__)
@@ -83,6 +83,11 @@ class ProfileService:
         mongo = MongoIO.get_instance()
         config = Config.get_instance()
 
+        # Imported lazily so the Journey/Encounter services (which do not import
+        # ProfileService) never create an import cycle.
+        from src.services.journey_service import JourneyService
+        from src.services.encounter_service import EncounterService
+
         mentor_name = token.get("user_id")
         mentors = mongo.get_documents(
             config.PROFILE_COLLECTION_NAME,
@@ -107,11 +112,11 @@ class ProfileService:
                 "_id": mentee["_id"],
                 "name": mentee.get("name"),
                 "description": mentee.get("description"),
-                "progress": ProfileService._journey_progress(
-                    mongo, config, mentee["_id"]
+                "progress": JourneyService.get_journey_progress(
+                    mentee["_id"], token, breadcrumb
                 ),
-                "last_encounter": ProfileService._recent_encounter(
-                    mongo, config, mentee["_id"]
+                "last_encounter": EncounterService.get_recent_encounter(
+                    mentee["_id"], token, breadcrumb
                 ),
             }
             for mentee in mentees
@@ -122,56 +127,6 @@ class ProfileService:
             f"for user {mentor_name}"
         )
         return dashboard
-
-    @staticmethod
-    def _journey_progress(mongo, config, profile_id):
-        """
-        Count the resources in the mentee's active Learning Journey by scope.
-
-        Returns a dict with ``library``, ``now``, and ``next`` counts. ``library``
-        and ``now`` count their resource entries directly; ``next`` sums the
-        resource entries across all Next topics. Returns zeros when the mentee
-        has no active journey.
-        """
-        journeys = mongo.get_documents(
-            config.JOURNEY_COLLECTION_NAME,
-            match={"profile_id": profile_id, "status": "active"},
-        )
-        if not journeys:
-            return {"library": 0, "now": 0, "next": 0}
-
-        journey = journeys[0]
-        next_resources = sum(
-            len(topic.get("resources") or []) for topic in (journey.get("next") or [])
-        )
-        return {
-            "library": len(journey.get("library") or []),
-            "now": len(journey.get("now") or []),
-            "next": next_resources,
-        }
-
-    @staticmethod
-    def _recent_encounter(mongo, config, profile_id):
-        """
-        Return a summary of the mentee's most recent Encounter, or ``None``.
-
-        The most recent encounter is the one with the latest ``date``.
-        """
-        encounters = mongo.get_documents(
-            config.ENCOUNTER_COLLECTION_NAME,
-            match={"mentee_id": profile_id},
-            sort_by=[("date", DESCENDING)],
-        )
-        if not encounters:
-            return None
-
-        encounter = encounters[0]
-        return {
-            "_id": encounter["_id"],
-            "date": encounter.get("date"),
-            "tldr": encounter.get("tldr"),
-            "summary": encounter.get("summary"),
-        }
 
     @staticmethod
     def get_profile(profile_id, token, breadcrumb):
@@ -208,41 +163,15 @@ class ProfileService:
         # Imported lazily so the Mentee/Encounter services (which do not import
         # ProfileService) never create an import cycle.
         from src.services.mentee_service import MenteeService
+        from src.services.encounter_service import EncounterService
 
         mentee = MenteeService.get_mentee(profile_id, token, breadcrumb)
-        encounters = ProfileService._mentee_encounters(profile_id, token, breadcrumb)
+        encounters = EncounterService.get_encounters_for_mentee(
+            profile_id, token, breadcrumb
+        )
 
         logger.info(
             f"Built profile detail for {profile_id} with {len(encounters)} "
             f"encounters for user {token.get('user_id')}"
         )
         return {"profile": profile, "mentee": mentee, "encounters": encounters}
-
-    @staticmethod
-    def _mentee_encounters(profile_id, token, breadcrumb):
-        """
-        Fetch a mentee's Encounters through the Encounter service.
-
-        Cross-collection reads must go through the owning service, so this asks
-        ``EncounterService`` for encounters and keeps the ones linked to this
-        mentee (``Encounter.mentee_id`` is the mentee's Profile id), most-recent
-        first. ``EncounterService`` only exposes the shared list reader today;
-        L040 moves a dedicated per-mentee read (and the recent-encounter logic)
-        into ``EncounterService``.
-
-        Args:
-            profile_id: The mentee Profile id whose encounters are wanted
-            token: Token dictionary with user_id and roles
-            breadcrumb: Breadcrumb dictionary for logging
-
-        Returns:
-            list[dict]: The mentee's Encounter documents, most recent first.
-        """
-        from src.services.encounter_service import EncounterService
-
-        result = EncounterService.get_encounters(token, breadcrumb, limit=100)
-        items = result.get("items", []) if isinstance(result, dict) else (result or [])
-
-        mine = [e for e in items if str(e.get("mentee_id")) == str(profile_id)]
-        mine.sort(key=lambda e: e.get("date") or "", reverse=True)
-        return mine
