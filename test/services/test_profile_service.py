@@ -1,5 +1,11 @@
 """
 Unit tests for Profile service (Mentor Dashboard, read-only).
+
+After L040 the Profile service composes its responses from dedicated domain
+services: journey progress comes from ``JourneyService`` and encounter data from
+``EncounterService``. These tests mock those collaborators and assert that
+``ProfileService`` delegates correctly while keeping the dashboard and composite
+response shapes unchanged.
 """
 
 import unittest
@@ -19,6 +25,9 @@ def _make_config():
     mock_config.PROFILE_COLLECTION_NAME = "Profile"
     mock_config.JOURNEY_COLLECTION_NAME = "Journey"
     mock_config.ENCOUNTER_COLLECTION_NAME = "Encounter"
+    mock_config.RESOURCE_COLLECTION_NAME = "Resource"
+    mock_config.ROLE_MENTOR = "mentor"
+    mock_config.ROLE_ADMIN = "admin"
     return mock_config
 
 
@@ -35,10 +44,18 @@ class TestProfileService(unittest.TestCase):
             "correlation_id": "test-correlation-id",
         }
 
+    @patch("src.services.encounter_service.EncounterService.get_recent_encounter")
+    @patch("src.services.journey_service.JourneyService.get_journey_progress")
     @patch("src.services.profile_service.Config.get_instance")
     @patch("src.services.profile_service.MongoIO.get_instance")
-    def test_get_profiles_builds_dashboard(self, mock_get_mongo, mock_get_config):
-        """Dashboard combines profile info, journey progress, and recent encounter."""
+    def test_get_profiles_builds_dashboard(
+        self,
+        mock_get_mongo,
+        mock_get_config,
+        mock_get_journey_progress,
+        mock_get_recent_encounter,
+    ):
+        """Dashboard combines profile info with delegated journey/encounter data."""
         mock_get_config.return_value = _make_config()
 
         def fake_get_documents(collection_name, match=None, project=None, sort_by=None):
@@ -49,36 +66,29 @@ class TestProfileService(unittest.TestCase):
                     {"_id": MENTEE_1_ID, "name": "daniel", "description": "mentee one"},
                     {"_id": MENTEE_2_ID, "name": "lucky", "description": "mentee two"},
                 ]
-            if collection_name == "Journey":
-                if match["profile_id"] == MENTEE_1_ID:
-                    return [
-                        {
-                            "status": "active",
-                            "library": [1, 2, 3],
-                            "now": [1],
-                            "next": [
-                                {"resources": ["a", "b"]},
-                                {"resources": ["c"]},
-                            ],
-                        }
-                    ]
-                return []
-            if collection_name == "Encounter":
-                if match["mentee_id"] == MENTEE_1_ID:
-                    return [
-                        {
-                            "_id": ENCOUNTER_ID,
-                            "date": "2025-02-01T00:00:00Z",
-                            "tldr": "great session",
-                            "summary": "covered async patterns",
-                        }
-                    ]
-                return []
             return []
 
         mock_mongo = MagicMock()
         mock_mongo.get_documents.side_effect = fake_get_documents
         mock_get_mongo.return_value = mock_mongo
+
+        def fake_journey_progress(profile_id, token, breadcrumb):
+            if profile_id == MENTEE_1_ID:
+                return {"library": 3, "now": 1, "next": 3}
+            return {"library": 0, "now": 0, "next": 0}
+
+        def fake_recent_encounter(mentee_id, token, breadcrumb):
+            if mentee_id == MENTEE_1_ID:
+                return {
+                    "_id": ENCOUNTER_ID,
+                    "date": "2025-02-01T00:00:00Z",
+                    "tldr": "great session",
+                    "summary": "covered async patterns",
+                }
+            return None
+
+        mock_get_journey_progress.side_effect = fake_journey_progress
+        mock_get_recent_encounter.side_effect = fake_recent_encounter
 
         result = ProfileService.get_profiles(self.mock_token, self.mock_breadcrumb)
 
@@ -86,6 +96,16 @@ class TestProfileService(unittest.TestCase):
         self.assertEqual(len(result), 2)
 
         first = result[0]
+        self.assertEqual(
+            set(first.keys()),
+            {
+                "_id",
+                "name",
+                "description",
+                "progress",
+                "last_encounter",
+            },
+        )
         self.assertEqual(first["_id"], MENTEE_1_ID)
         self.assertEqual(first["name"], "daniel")
         self.assertEqual(first["description"], "mentee one")
@@ -97,6 +117,23 @@ class TestProfileService(unittest.TestCase):
         self.assertEqual(second["name"], "lucky")
         self.assertEqual(second["progress"], {"library": 0, "now": 0, "next": 0})
         self.assertIsNone(second["last_encounter"])
+
+        # Journey/encounter data is fetched via the dedicated services, once per
+        # mentee, with the mentee Profile id and the caller's token/breadcrumb.
+        mock_get_journey_progress.assert_any_call(
+            MENTEE_1_ID, self.mock_token, self.mock_breadcrumb
+        )
+        mock_get_journey_progress.assert_any_call(
+            MENTEE_2_ID, self.mock_token, self.mock_breadcrumb
+        )
+        self.assertEqual(mock_get_journey_progress.call_count, 2)
+        mock_get_recent_encounter.assert_any_call(
+            MENTEE_1_ID, self.mock_token, self.mock_breadcrumb
+        )
+        mock_get_recent_encounter.assert_any_call(
+            MENTEE_2_ID, self.mock_token, self.mock_breadcrumb
+        )
+        self.assertEqual(mock_get_recent_encounter.call_count, 2)
 
     @patch("src.services.profile_service.Config.get_instance")
     @patch("src.services.profile_service.MongoIO.get_instance")
@@ -135,9 +172,17 @@ class TestProfileService(unittest.TestCase):
             "Profile", match={"name": "mike"}
         )
 
+    @patch("src.services.encounter_service.EncounterService.get_recent_encounter")
+    @patch("src.services.journey_service.JourneyService.get_journey_progress")
     @patch("src.services.profile_service.Config.get_instance")
     @patch("src.services.profile_service.MongoIO.get_instance")
-    def test_get_profiles_empty_when_no_mentees(self, mock_get_mongo, mock_get_config):
+    def test_get_profiles_empty_when_no_mentees(
+        self,
+        mock_get_mongo,
+        mock_get_config,
+        mock_get_journey_progress,
+        mock_get_recent_encounter,
+    ):
         """Return an empty list when the mentor has no assigned mentees."""
         mock_get_config.return_value = _make_config()
 
@@ -153,6 +198,9 @@ class TestProfileService(unittest.TestCase):
         result = ProfileService.get_profiles(self.mock_token, self.mock_breadcrumb)
 
         self.assertEqual(result, [])
+        # No mentees means no delegation to the journey/encounter services.
+        mock_get_journey_progress.assert_not_called()
+        mock_get_recent_encounter.assert_not_called()
 
     @patch("src.services.profile_service.Config.get_instance")
     @patch("src.services.profile_service.MongoIO.get_instance")
@@ -171,26 +219,67 @@ class TestProfileService(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             ProfileService.get_profiles(self.mock_token, self.mock_breadcrumb)
 
+    @patch("src.services.encounter_service.EncounterService.get_encounters_for_mentee")
+    @patch("src.services.mentee_service.MenteeService.get_mentee")
     @patch("src.services.profile_service.Config.get_instance")
     @patch("src.services.profile_service.MongoIO.get_instance")
-    def test_get_profile_success(self, mock_get_mongo, mock_get_config):
-        """Test successful retrieval of a specific profile document."""
+    def test_get_profile_returns_composite(
+        self,
+        mock_get_mongo,
+        mock_get_config,
+        mock_get_mentee,
+        mock_get_encounters_for_mentee,
+    ):
+        """get_profile returns the {profile, mentee, encounters} composite."""
         mock_get_config.return_value = _make_config()
 
+        profile_id = str(MENTEE_1_ID)
+        profile_doc = {"_id": MENTEE_1_ID, "name": "daniel"}
+        mentee_doc = {"_id": ObjectId("507f1f77bcf86cd7994390bb"), "notes": "n"}
+
         mock_mongo = MagicMock()
-        mock_mongo.get_document.return_value = {
-            "_id": "123",
-            "name": "profile1",
-        }
+        mock_mongo.get_document.return_value = profile_doc
         mock_get_mongo.return_value = mock_mongo
 
+        mock_get_mentee.return_value = mentee_doc
+
+        newer = {
+            "_id": ENCOUNTER_ID,
+            "mentee_id": MENTEE_1_ID,
+            "date": "2025-03-01T00:00:00Z",
+        }
+        older = {
+            "_id": ObjectId("507f1f77bcf86cd7994390a1"),
+            "mentee_id": MENTEE_1_ID,
+            "date": "2025-01-01T00:00:00Z",
+        }
+        # The Encounter service is responsible for filtering by mentee and
+        # ordering most-recent-first; ProfileService passes the result through.
+        mock_get_encounters_for_mentee.return_value = [newer, older]
+
         result = ProfileService.get_profile(
-            "123", self.mock_token, self.mock_breadcrumb
+            profile_id, self.mock_token, self.mock_breadcrumb
         )
 
-        self.assertIsNotNone(result)
-        self.assertEqual(result["_id"], "123")
-        mock_mongo.get_document.assert_called_once_with("Profile", "123")
+        # Composite shape matches the ProfileDetail contract exactly.
+        self.assertEqual(set(result.keys()), {"profile", "mentee", "encounters"})
+        self.assertEqual(result["profile"], profile_doc)
+        self.assertEqual(result["mentee"], mentee_doc)
+        self.assertEqual(
+            [e["_id"] for e in result["encounters"]], [ENCOUNTER_ID, older["_id"]]
+        )
+
+        # The Profile is read directly; cross-collection data is not.
+        mock_mongo.get_document.assert_called_once_with("Profile", profile_id)
+        mock_mongo.get_documents.assert_not_called()
+
+        # Related domains are fetched service-to-service.
+        mock_get_mentee.assert_called_once_with(
+            profile_id, self.mock_token, self.mock_breadcrumb
+        )
+        mock_get_encounters_for_mentee.assert_called_once_with(
+            profile_id, self.mock_token, self.mock_breadcrumb
+        )
 
     @patch("src.services.profile_service.Config.get_instance")
     @patch("src.services.profile_service.MongoIO.get_instance")
@@ -236,15 +325,115 @@ class TestProfileService(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             ProfileService.get_profile("123", self.mock_token, self.mock_breadcrumb)
 
-    def test_check_permission_allows_mentor(self):
+    @patch("src.services.profile_service.Config.get_instance")
+    def test_check_permission_allows_mentor(self, mock_get_config):
         """A token with the mentor role passes the permission check."""
-        ProfileService._check_permission(self.mock_token, "read")
+        mock_get_config.return_value = _make_config()
+        ProfileService._check_permission(
+            {"user_id": "mike", "roles": ["mentor"]}, "read"
+        )
 
-    def test_check_permission_denies_non_mentor(self):
-        """A token without the mentor role raises HTTPForbidden."""
+    @patch("src.services.profile_service.Config.get_instance")
+    def test_check_permission_allows_admin(self, mock_get_config):
+        """A token with the admin role passes the permission check."""
+        mock_get_config.return_value = _make_config()
+        ProfileService._check_permission({"user_id": "ada", "roles": ["admin"]}, "read")
+
+    @patch("src.services.profile_service.Config.get_instance")
+    def test_check_permission_denies_other_roles(self, mock_get_config):
+        """A token without the mentor or admin role raises HTTPForbidden."""
+        mock_get_config.return_value = _make_config()
         with self.assertRaises(HTTPForbidden):
             ProfileService._check_permission(
                 {"user_id": "carol", "roles": ["coordinator"]}, "read"
+            )
+
+    @patch("src.services.encounter_service.EncounterService.get_encounters_for_mentee")
+    @patch("src.services.journey_service.JourneyService.get_journey_progress")
+    @patch("src.services.profile_service.Config.get_instance")
+    @patch("src.services.profile_service.MongoIO.get_instance")
+    def test_get_profile_properties_success(
+        self,
+        mock_get_mongo,
+        mock_get_config,
+        mock_get_journey_progress,
+        mock_get_encounters_for_mentee,
+    ):
+        """Properties hub aggregates journey resources and mentor history."""
+        mock_get_config.return_value = _make_config()
+        resource_id = ObjectId("507f1f77bcf86cd7994390bb")
+
+        def fake_get_document(collection_name, doc_id):
+            if collection_name == "Profile" and doc_id == str(MENTEE_1_ID):
+                return {"_id": MENTEE_1_ID, "name": "daniel", "status": "active"}
+            if collection_name == "Resource" and doc_id == str(resource_id):
+                return {
+                    "_id": resource_id,
+                    "name": "async-patterns",
+                    "url": "https://example.com/async",
+                }
+            if collection_name == "Profile" and doc_id == str(MENTOR_ID):
+                return {"_id": MENTOR_ID, "name": "mike"}
+            return None
+
+        def fake_get_documents(collection_name, match=None, project=None, sort_by=None):
+            if collection_name == "Journey":
+                return [
+                    {
+                        "status": "active",
+                        "library": [
+                            {
+                                "resource_id": resource_id,
+                                "completed": "2025-02-01T00:00:00Z",
+                            }
+                        ],
+                        "now": [],
+                        "next": [],
+                    }
+                ]
+            return []
+
+        mock_mongo = MagicMock()
+        mock_mongo.get_document.side_effect = fake_get_document
+        mock_mongo.get_documents.side_effect = fake_get_documents
+        mock_get_mongo.return_value = mock_mongo
+        mock_get_journey_progress.return_value = {
+            "library": 1,
+            "now": 0,
+            "next": 0,
+        }
+        mock_get_encounters_for_mentee.return_value = [
+            {
+                "mentor_id": MENTOR_ID,
+                "date": "2025-02-01T00:00:00Z",
+            }
+        ]
+
+        result = ProfileService.get_profile_properties(
+            str(MENTEE_1_ID), self.mock_token, self.mock_breadcrumb
+        )
+
+        self.assertEqual(result["profile"]["name"], "daniel")
+        self.assertEqual(result["status_summary"]["library_count"], 1)
+        self.assertEqual(len(result["sites_and_links"]), 1)
+        self.assertEqual(
+            result["sites_and_links"][0]["url"], "https://example.com/async"
+        )
+        self.assertEqual(len(result["celebrations"]), 1)
+        self.assertEqual(result["mentor_history"][0]["mentor_name"], "mike")
+
+    @patch("src.services.profile_service.Config.get_instance")
+    @patch("src.services.profile_service.MongoIO.get_instance")
+    def test_get_profile_properties_not_found(self, mock_get_mongo, mock_get_config):
+        """Properties hub returns 404 when the mentee profile does not exist."""
+        mock_get_config.return_value = _make_config()
+        mock_mongo = MagicMock()
+        mock_mongo.get_document.return_value = None
+        mock_get_mongo.return_value = mock_mongo
+
+        with self.assertRaises(HTTPNotFound):
+            ProfileService.get_profile_properties(
+                "999", self.mock_token, self.mock_breadcrumb
             )
 
 

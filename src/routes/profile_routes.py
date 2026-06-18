@@ -3,7 +3,8 @@ Profile routes for Flask API.
 
 Provides endpoints for Profile domain:
 - GET /api/profile - Get the Mentor Dashboard for the current user
-- GET /api/profile/<id> - Get a specific profile document by ID
+- GET /api/profile/<id>/properties - Aggregated mentee activity for Properties hub
+- GET /api/profile/<id> - Get composite Profile detail by ID
 """
 
 from flask import Blueprint, jsonify
@@ -52,17 +53,35 @@ def create_profile_routes():
         )
         return jsonify(result), 200
 
+    @profile_routes.route("/<profile_id>/properties", methods=["GET"])
+    @handle_route_exceptions
+    def get_profile_properties(profile_id):
+        """
+        GET /api/profile/<id>/properties - Aggregated mentee activity view.
+        """
+        token = create_flask_token()
+        breadcrumb = create_flask_breadcrumb(token)
+
+        result = ProfileService.get_profile_properties(
+            profile_id, token, breadcrumb
+        )
+        logger.info(
+            f"get_profile_properties Success {str(breadcrumb['at_time'])}, "
+            f"{breadcrumb['correlation_id']}"
+        )
+        return jsonify(result), 200
+
     @profile_routes.route("/<profile_id>", methods=["GET"])
     @handle_route_exceptions
     def get_profile(profile_id):
         """
-        GET /api/profile/<id> - Retrieve a specific profile document by ID.
+        GET /api/profile/<id> - Retrieve composite Profile detail by ID.
 
         Args:
             profile_id: The profile ID to retrieve
 
         Returns:
-            JSON response with the profile document
+            JSON response with profile, mentee, and encounters
         """
         token = create_flask_token()
         breadcrumb = create_flask_breadcrumb(token)
