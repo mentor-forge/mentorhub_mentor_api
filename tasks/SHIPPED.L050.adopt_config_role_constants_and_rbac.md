@@ -1,6 +1,6 @@
 # L050 – Adopt shared Config role constants and allow admin + mentor
 
-**Status**: Blocked  
+**Status**: Shipped  
 **Type**: Feature  
 **Depends On**: L040  
 **Description**: Replace locally declared role strings with the shared role constants on `api_utils.Config`, and update the RBAC permission checks to authorize **both** the `admin` and `mentor` roles. Bump the `api-utils` version pin in the `Pipfile` to the published version that exposes the role constants.
@@ -61,15 +61,28 @@ The agent must not update files outside this list.
 
 ## Execution Notes
 
-**BLOCKED on external prerequisite (api_utils role constants not published).**
+**Unblocked & shipped (2026-06-18).** `api_utils 0.2.3` exposes the shared role
+constants on the `Config` instance: `ROLE_ADMIN="admin"`, `ROLE_MENTOR="mentor"`,
+`ROLE_MENTEE="mentee"`, `ROLE_COORDINATOR="coordinator"`, `ROLE_CUSTOMER="customer"`
+(instance attributes via `Config.get_instance()`). Note the published names are
+`ROLE_MENTOR`/`ROLE_ADMIN` (not `MENTOR_ROLE`/`ADMIN_ROLE` as the draft guessed).
 
-Pre-flight verification (2026-06-18):
-- Imported `api_utils` resolves to the editable working tree `../mentorhub_api_utils` (`api_utils.__file__` → `.../mentorhub_api_utils/api_utils/__init__.py`), currently on branch `main`.
-- `Config` exposes **no** role constants: `hasattr(Config, 'MENTOR_ROLE') == False`, `hasattr(Config, 'ADMIN_ROLE') == False`, `[a for a in dir(Config) if 'ROLE' in a] == []`.
-- `Pipfile` still pins `api-utils == 0.2.1`; no newer version with role constants is resolvable.
+**Summary of changes**
+- `Pipfile` / `Pipfile.lock`: `api-utils` pin bumped `0.2.2` → `0.2.3` (relocked via `scripts/pipenv-lock.sh`, installed via `pipenv run install` from CodeArtifact — no editable install).
+- `src/services/profile_service.py`, `mentee_service.py`, `journey_service.py`: removed the local `MENTOR_ROLE = "mentor"` constants; `_check_permission` now reads `Config.get_instance().ROLE_MENTOR` / `ROLE_ADMIN` and authorizes **both** roles (mentor or admin).
+- `docs/openapi.yaml`: role wording on the Profile + Mentee endpoints updated to "`mentor` or `admin`"; `403` responses retained.
+- Tests (`test_profile_service.py`, `test_mentee_service.py`, `test_journey_service.py`): config mocks expose `ROLE_MENTOR`/`ROLE_ADMIN`; added explicit `admin`-allowed cases and kept `mentor`-allowed / other-role-denied (403) assertions.
 
-Because the shared role constants do not exist in the `api_utils` this repo imports, this task cannot adopt them or bump the pin. Per the task's external-prerequisite rule, Status is set to **Blocked** and execution stopped.
+**Scope note:** only `profile`/`mentee`/`journey` services enforce real RBAC
+(the `MENTOR_ROLE` constant). `encounter`/`event`/`path`/`plan` services'
+`_check_permission` are auth-only placeholders (`pass`; the admin/staff strings
+live in docstring examples), so they were intentionally left untouched to avoid
+scope creep.
 
-**To unblock:** publish an `api_utils` version that defines the role constants (e.g. `Config.MENTOR_ROLE`, `Config.ADMIN_ROLE`, and ideally `MENTEE_COLLECTION_NAME`), then bump the `Pipfile` pin and re-run this task.
-
-**Interim option (not done here, requires approval):** the "allow admin + mentor" half could be implemented now using local role strings in each service's `_check_permission`, deferring the shared-constant adoption to when api_utils ships. This deviates from the task as written, so it was left for the developer to decide.
+**Testing results**
+- `pipenv run install`: resolves `api-utils==0.2.3` from CodeArtifact.
+- `pipenv run test`: 189 passed, 29 deselected.
+- `pipenv run build`: clean.
+- `pipenv run lint`: all changed files black-clean (pre-existing repo black debt elsewhere untouched).
+- OpenAPI: parses; 35 refs, 0 dangling.
+- E2E/packaging verification: deferred to a configured environment (local dev/e2e infra unavailable here — see L020 notes).

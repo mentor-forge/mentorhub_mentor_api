@@ -19,18 +19,13 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Role required to access Journey domain data through this service. Mirrors the
-# mentor-facing permission pattern used by ProfileService. Adopting shared
-# Config role constants is handled later in L050.
-MENTOR_ROLE = "mentor"
-
 
 class JourneyService:
     """
     Service class for Learning Journey domain operations.
 
     Handles:
-    - RBAC authorization checks (requires the ``mentor`` role)
+    - RBAC authorization checks (requires the ``mentor`` or ``admin`` role)
     - MongoDB operations via MongoIO singleton
     - Active-journey resource-count aggregation by scope (library/now/next)
     """
@@ -40,19 +35,22 @@ class JourneyService:
         """
         Authorize an operation for the Journey domain.
 
-        Only users granted the ``mentor`` role may access journey data through
-        this service.
+        Users granted either the ``mentor`` or ``admin`` role (per the shared
+        ``Config`` role constants) may access journey data through this service.
 
         Args:
             token: Token dictionary with user_id and roles
             operation: The operation being performed (e.g., 'read')
 
         Raises:
-            HTTPForbidden: If the caller does not hold the ``mentor`` role
+            HTTPForbidden: If the caller holds neither the ``mentor`` nor the
+                ``admin`` role
         """
+        config = Config.get_instance()
+        allowed_roles = {config.ROLE_MENTOR, config.ROLE_ADMIN}
         roles = token.get("roles", []) or []
-        if MENTOR_ROLE not in roles:
-            raise HTTPForbidden("Mentor role required to access journey data")
+        if not allowed_roles.intersection(roles):
+            raise HTTPForbidden("Mentor or admin role required to access journey data")
 
     @staticmethod
     def get_journey_progress(profile_id, token, breadcrumb):

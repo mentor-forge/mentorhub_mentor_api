@@ -26,11 +26,6 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Role required to access Mentee domain data through this service. Mirrors the
-# mentor-facing permission pattern used by ProfileService. Adopting shared
-# Config role constants (and adding admin) is handled later in L050.
-MENTOR_ROLE = "mentor"
-
 # Fields the client may never set/overwrite directly (system-managed).
 RESTRICTED_FIELDS = ["_id", "created", "saved"]
 
@@ -40,7 +35,7 @@ class MenteeService:
     Service class for Mentee domain operations.
 
     Handles:
-    - RBAC authorization checks (requires the ``mentor`` role)
+    - RBAC authorization checks (requires the ``mentor`` or ``admin`` role)
     - MongoDB operations via MongoIO singleton
     - Read-with-create-if-missing and update of the mentee-notes document
     """
@@ -55,19 +50,22 @@ class MenteeService:
         """
         Authorize an operation for the Mentee domain.
 
-        Only users granted the ``mentor`` role may access mentee data through
-        this service.
+        Users granted either the ``mentor`` or ``admin`` role (per the shared
+        ``Config`` role constants) may access mentee data through this service.
 
         Args:
             token: Token dictionary with user_id and roles
             operation: The operation being performed (e.g., 'read', 'update')
 
         Raises:
-            HTTPForbidden: If the caller does not hold the ``mentor`` role
+            HTTPForbidden: If the caller holds neither the ``mentor`` nor the
+                ``admin`` role
         """
+        config = Config.get_instance()
+        allowed_roles = {config.ROLE_MENTOR, config.ROLE_ADMIN}
         roles = token.get("roles", []) or []
-        if MENTOR_ROLE not in roles:
-            raise HTTPForbidden("Mentor role required to access mentee data")
+        if not allowed_roles.intersection(roles):
+            raise HTTPForbidden("Mentor or admin role required to access mentee data")
 
     @staticmethod
     def _to_object_id(value, label):

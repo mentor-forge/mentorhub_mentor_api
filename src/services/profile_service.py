@@ -20,16 +20,13 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Role required to access Profile domain data through this service
-MENTOR_ROLE = "mentor"
-
 
 class ProfileService:
     """
     Service class for Profile domain operations.
 
     Handles:
-    - RBAC authorization checks (requires the ``mentor`` role)
+    - RBAC authorization checks (requires the ``mentor`` or ``admin`` role)
     - MongoDB operations via MongoIO singleton
     - Mentor Dashboard aggregation (Profile + Journey progress + recent Encounter)
     """
@@ -39,19 +36,22 @@ class ProfileService:
         """
         Authorize an operation for the Profile domain.
 
-        Only users granted the ``mentor`` role may access profile data through
-        this service.
+        Users granted either the ``mentor`` or ``admin`` role (per the shared
+        ``Config`` role constants) may access profile data through this service.
 
         Args:
             token: Token dictionary with user_id and roles
             operation: The operation being performed (e.g., 'read')
 
         Raises:
-            HTTPForbidden: If the caller does not hold the ``mentor`` role
+            HTTPForbidden: If the caller holds neither the ``mentor`` nor the
+                ``admin`` role
         """
+        config = Config.get_instance()
+        allowed_roles = {config.ROLE_MENTOR, config.ROLE_ADMIN}
         roles = token.get("roles", []) or []
-        if MENTOR_ROLE not in roles:
-            raise HTTPForbidden("Mentor role required to access profile data")
+        if not allowed_roles.intersection(roles):
+            raise HTTPForbidden("Mentor or admin role required to access profile data")
 
     @staticmethod
     def get_profiles(token, breadcrumb):
@@ -197,9 +197,7 @@ class ProfileService:
             return None
         if resource_ref in cache:
             return cache[resource_ref]
-        resource = mongo.get_document(
-            config.RESOURCE_COLLECTION_NAME, resource_ref
-        )
+        resource = mongo.get_document(config.RESOURCE_COLLECTION_NAME, resource_ref)
         if resource is None:
             resources = mongo.get_documents(
                 config.RESOURCE_COLLECTION_NAME,
@@ -272,9 +270,7 @@ class ProfileService:
             match={"profile_id": profile_id, "status": "active"},
         )
         journey = journeys[0] if journeys else None
-        progress = JourneyService.get_journey_progress(
-            profile_id, token, breadcrumb
-        )
+        progress = JourneyService.get_journey_progress(profile_id, token, breadcrumb)
         encounters = EncounterService.get_encounters_for_mentee(
             profile_id, token, breadcrumb
         )
@@ -286,7 +282,9 @@ class ProfileService:
         seen_usage = set()
 
         def add_site(scope, entry, resource):
-            resource_id = str(resource.get("_id") or ProfileService._resource_ref(entry))
+            resource_id = str(
+                resource.get("_id") or ProfileService._resource_ref(entry)
+            )
             sites_and_links.append(
                 {
                     "resource_id": resource_id,
@@ -385,9 +383,7 @@ class ProfileService:
                 "last_activity_at": last_activity_at,
             },
             "sites_and_links": sites_and_links,
-            "mentor_history": ProfileService._mentor_history(
-                mongo, config, encounters
-            ),
+            "mentor_history": ProfileService._mentor_history(mongo, config, encounters),
             "journey": journey,
             "path": None,
             "resource_usage": resource_usage,

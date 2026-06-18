@@ -35,7 +35,10 @@ class TestMenteeService(unittest.TestCase):
     def test_get_mentee_existing(self, mock_get_mongo, mock_get_config):
         """get_mentee returns the existing document when one is found."""
         mock_get_config.return_value = MagicMock(
-            spec=["MENTEE_COLLECTION_NAME"], MENTEE_COLLECTION_NAME="Mentee"
+            spec=["MENTEE_COLLECTION_NAME", "ROLE_MENTOR", "ROLE_ADMIN"],
+            MENTEE_COLLECTION_NAME="Mentee",
+            ROLE_MENTOR="mentor",
+            ROLE_ADMIN="admin",
         )
 
         existing = {"_id": ObjectId(MENTEE_ID), "profile_id": ObjectId(PROFILE_ID)}
@@ -59,7 +62,10 @@ class TestMenteeService(unittest.TestCase):
     def test_get_mentee_creates_when_missing(self, mock_get_mongo, mock_get_config):
         """get_mentee creates a schema-valid default document when none exists."""
         mock_get_config.return_value = MagicMock(
-            spec=["MENTEE_COLLECTION_NAME"], MENTEE_COLLECTION_NAME="Mentee"
+            spec=["MENTEE_COLLECTION_NAME", "ROLE_MENTOR", "ROLE_ADMIN"],
+            MENTEE_COLLECTION_NAME="Mentee",
+            ROLE_MENTOR="mentor",
+            ROLE_ADMIN="admin",
         )
 
         created_doc = {
@@ -98,7 +104,10 @@ class TestMenteeService(unittest.TestCase):
     def test_get_mentee_invalid_profile_id(self, mock_get_mongo, mock_get_config):
         """get_mentee raises HTTPBadRequest for an invalid profile_id."""
         mock_get_config.return_value = MagicMock(
-            spec=["MENTEE_COLLECTION_NAME"], MENTEE_COLLECTION_NAME="Mentee"
+            spec=["MENTEE_COLLECTION_NAME", "ROLE_MENTOR", "ROLE_ADMIN"],
+            MENTEE_COLLECTION_NAME="Mentee",
+            ROLE_MENTOR="mentor",
+            ROLE_ADMIN="admin",
         )
         mock_mongo = MagicMock()
         mock_get_mongo.return_value = mock_mongo
@@ -116,7 +125,10 @@ class TestMenteeService(unittest.TestCase):
     ):
         """Callers lacking the mentor role are denied before any DB access."""
         mock_get_config.return_value = MagicMock(
-            spec=["MENTEE_COLLECTION_NAME"], MENTEE_COLLECTION_NAME="Mentee"
+            spec=["MENTEE_COLLECTION_NAME", "ROLE_MENTOR", "ROLE_ADMIN"],
+            MENTEE_COLLECTION_NAME="Mentee",
+            ROLE_MENTOR="mentor",
+            ROLE_ADMIN="admin",
         )
         mock_mongo = MagicMock()
         mock_get_mongo.return_value = mock_mongo
@@ -131,7 +143,10 @@ class TestMenteeService(unittest.TestCase):
     def test_update_mentee_success(self, mock_get_mongo, mock_get_config):
         """update_mentee writes $set data, stamps saved, and returns the doc."""
         mock_get_config.return_value = MagicMock(
-            spec=["MENTEE_COLLECTION_NAME"], MENTEE_COLLECTION_NAME="Mentee"
+            spec=["MENTEE_COLLECTION_NAME", "ROLE_MENTOR", "ROLE_ADMIN"],
+            MENTEE_COLLECTION_NAME="Mentee",
+            ROLE_MENTOR="mentor",
+            ROLE_ADMIN="admin",
         )
 
         mock_mongo = MagicMock()
@@ -162,7 +177,10 @@ class TestMenteeService(unittest.TestCase):
     ):
         """update_mentee raises HTTPForbidden for restricted fields."""
         mock_get_config.return_value = MagicMock(
-            spec=["MENTEE_COLLECTION_NAME"], MENTEE_COLLECTION_NAME="Mentee"
+            spec=["MENTEE_COLLECTION_NAME", "ROLE_MENTOR", "ROLE_ADMIN"],
+            MENTEE_COLLECTION_NAME="Mentee",
+            ROLE_MENTOR="mentor",
+            ROLE_ADMIN="admin",
         )
         mock_mongo = MagicMock()
         mock_get_mongo.return_value = mock_mongo
@@ -183,7 +201,10 @@ class TestMenteeService(unittest.TestCase):
     def test_update_mentee_not_found(self, mock_get_mongo, mock_get_config):
         """update_mentee raises HTTPNotFound when the document is missing."""
         mock_get_config.return_value = MagicMock(
-            spec=["MENTEE_COLLECTION_NAME"], MENTEE_COLLECTION_NAME="Mentee"
+            spec=["MENTEE_COLLECTION_NAME", "ROLE_MENTOR", "ROLE_ADMIN"],
+            MENTEE_COLLECTION_NAME="Mentee",
+            ROLE_MENTOR="mentor",
+            ROLE_ADMIN="admin",
         )
 
         mock_mongo = MagicMock()
@@ -201,7 +222,10 @@ class TestMenteeService(unittest.TestCase):
     def test_update_mentee_invalid_id(self, mock_get_mongo, mock_get_config):
         """update_mentee raises HTTPBadRequest for an invalid mentee_id."""
         mock_get_config.return_value = MagicMock(
-            spec=["MENTEE_COLLECTION_NAME"], MENTEE_COLLECTION_NAME="Mentee"
+            spec=["MENTEE_COLLECTION_NAME", "ROLE_MENTOR", "ROLE_ADMIN"],
+            MENTEE_COLLECTION_NAME="Mentee",
+            ROLE_MENTOR="mentor",
+            ROLE_ADMIN="admin",
         )
         mock_mongo = MagicMock()
         mock_get_mongo.return_value = mock_mongo
@@ -219,7 +243,10 @@ class TestMenteeService(unittest.TestCase):
     ):
         """update_mentee requires the mentor role before any DB access."""
         mock_get_config.return_value = MagicMock(
-            spec=["MENTEE_COLLECTION_NAME"], MENTEE_COLLECTION_NAME="Mentee"
+            spec=["MENTEE_COLLECTION_NAME", "ROLE_MENTOR", "ROLE_ADMIN"],
+            MENTEE_COLLECTION_NAME="Mentee",
+            ROLE_MENTOR="mentor",
+            ROLE_ADMIN="admin",
         )
         mock_mongo = MagicMock()
         mock_get_mongo.return_value = mock_mongo
@@ -236,7 +263,10 @@ class TestMenteeService(unittest.TestCase):
     def test_get_mentee_handles_exception(self, mock_get_mongo, mock_get_config):
         """get_mentee wraps unexpected database errors as HTTPInternalServerError."""
         mock_get_config.return_value = MagicMock(
-            spec=["MENTEE_COLLECTION_NAME"], MENTEE_COLLECTION_NAME="Mentee"
+            spec=["MENTEE_COLLECTION_NAME", "ROLE_MENTOR", "ROLE_ADMIN"],
+            MENTEE_COLLECTION_NAME="Mentee",
+            ROLE_MENTOR="mentor",
+            ROLE_ADMIN="admin",
         )
 
         mock_mongo = MagicMock()
@@ -251,7 +281,10 @@ class TestMenteeService(unittest.TestCase):
     def test_update_mentee_handles_exception(self, mock_get_mongo, mock_get_config):
         """update_mentee wraps unexpected database errors as HTTPInternalServerError."""
         mock_get_config.return_value = MagicMock(
-            spec=["MENTEE_COLLECTION_NAME"], MENTEE_COLLECTION_NAME="Mentee"
+            spec=["MENTEE_COLLECTION_NAME", "ROLE_MENTOR", "ROLE_ADMIN"],
+            MENTEE_COLLECTION_NAME="Mentee",
+            ROLE_MENTOR="mentor",
+            ROLE_ADMIN="admin",
         )
 
         mock_mongo = MagicMock()
@@ -263,12 +296,30 @@ class TestMenteeService(unittest.TestCase):
                 MENTEE_ID, {"focus": "y"}, self.mock_token, self.mock_breadcrumb
             )
 
-    def test_check_permission_allows_mentor(self):
+    @patch("src.services.mentee_service.Config.get_instance")
+    def test_check_permission_allows_mentor(self, mock_get_config):
         """A token with the mentor role passes the permission check."""
-        MenteeService._check_permission(self.mock_token, "read")
+        mock_get_config.return_value = MagicMock(
+            ROLE_MENTOR="mentor", ROLE_ADMIN="admin"
+        )
+        MenteeService._check_permission(
+            {"user_id": "mike", "roles": ["mentor"]}, "read"
+        )
 
-    def test_check_permission_denies_non_mentor(self):
-        """A token without the mentor role raises HTTPForbidden."""
+    @patch("src.services.mentee_service.Config.get_instance")
+    def test_check_permission_allows_admin(self, mock_get_config):
+        """A token with the admin role passes the permission check."""
+        mock_get_config.return_value = MagicMock(
+            ROLE_MENTOR="mentor", ROLE_ADMIN="admin"
+        )
+        MenteeService._check_permission({"user_id": "ada", "roles": ["admin"]}, "read")
+
+    @patch("src.services.mentee_service.Config.get_instance")
+    def test_check_permission_denies_other_roles(self, mock_get_config):
+        """A token without the mentor or admin role raises HTTPForbidden."""
+        mock_get_config.return_value = MagicMock(
+            ROLE_MENTOR="mentor", ROLE_ADMIN="admin"
+        )
         with self.assertRaises(HTTPForbidden):
             MenteeService._check_permission(
                 {"user_id": "carol", "roles": ["coordinator"]}, "read"

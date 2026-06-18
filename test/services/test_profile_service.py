@@ -26,6 +26,8 @@ def _make_config():
     mock_config.JOURNEY_COLLECTION_NAME = "Journey"
     mock_config.ENCOUNTER_COLLECTION_NAME = "Encounter"
     mock_config.RESOURCE_COLLECTION_NAME = "Resource"
+    mock_config.ROLE_MENTOR = "mentor"
+    mock_config.ROLE_ADMIN = "admin"
     return mock_config
 
 
@@ -323,12 +325,24 @@ class TestProfileService(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             ProfileService.get_profile("123", self.mock_token, self.mock_breadcrumb)
 
-    def test_check_permission_allows_mentor(self):
+    @patch("src.services.profile_service.Config.get_instance")
+    def test_check_permission_allows_mentor(self, mock_get_config):
         """A token with the mentor role passes the permission check."""
-        ProfileService._check_permission(self.mock_token, "read")
+        mock_get_config.return_value = _make_config()
+        ProfileService._check_permission(
+            {"user_id": "mike", "roles": ["mentor"]}, "read"
+        )
 
-    def test_check_permission_denies_non_mentor(self):
-        """A token without the mentor role raises HTTPForbidden."""
+    @patch("src.services.profile_service.Config.get_instance")
+    def test_check_permission_allows_admin(self, mock_get_config):
+        """A token with the admin role passes the permission check."""
+        mock_get_config.return_value = _make_config()
+        ProfileService._check_permission({"user_id": "ada", "roles": ["admin"]}, "read")
+
+    @patch("src.services.profile_service.Config.get_instance")
+    def test_check_permission_denies_other_roles(self, mock_get_config):
+        """A token without the mentor or admin role raises HTTPForbidden."""
+        mock_get_config.return_value = _make_config()
         with self.assertRaises(HTTPForbidden):
             ProfileService._check_permission(
                 {"user_id": "carol", "roles": ["coordinator"]}, "read"
@@ -402,7 +416,9 @@ class TestProfileService(unittest.TestCase):
         self.assertEqual(result["profile"]["name"], "daniel")
         self.assertEqual(result["status_summary"]["library_count"], 1)
         self.assertEqual(len(result["sites_and_links"]), 1)
-        self.assertEqual(result["sites_and_links"][0]["url"], "https://example.com/async")
+        self.assertEqual(
+            result["sites_and_links"][0]["url"], "https://example.com/async"
+        )
         self.assertEqual(len(result["celebrations"]), 1)
         self.assertEqual(result["mentor_history"][0]["mentor_name"], "mike")
 

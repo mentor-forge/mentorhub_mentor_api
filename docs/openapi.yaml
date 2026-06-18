@@ -999,7 +999,7 @@ paths:
         - Profile
       summary: Get the Mentor Dashboard profiles
       description: |
-        Returns the Mentor Dashboard (requires the `mentor` role): the set of mentee Profiles assigned to the
+        Returns the Mentor Dashboard (requires the `mentor` or `admin` role): the set of mentee Profiles assigned to the
         current user (resolved from the JWT token's identity — Profiles whose
         `mentor_id` matches the caller). This is a read-only, non-paginated
         endpoint that always returns the full set in a pre-determined order, so
@@ -1035,7 +1035,7 @@ paths:
       summary: Get mentee Properties hub (aggregated activity)
       description: |
         Returns an aggregated read-only view for the mentor **Properties** hub
-        for a single mentee Profile. Requires the `mentor` role.
+        for a single mentee Profile. Requires the `mentor` or `admin` role.
       operationId: getProfileProperties
       security:
         - bearerAuth: []
@@ -1070,7 +1070,7 @@ paths:
       summary: Get Profile detail by ProfileId
       description: |
         Retrieve the composite detail for a specific mentee Profile (read-only).
-        Requires the `mentor` role. The response combines the Profile document,
+        Requires the `mentor` or `admin` role. The response combines the Profile document,
         the mentee notes document, and the full list of Encounters for the mentee.
       operationId: getProfile
       security:
@@ -1106,7 +1106,7 @@ paths:
       summary: Get Mentee notes by profile_id
       description: |
         Retrieve the mentee notes document for the given mentee Profile id
-        (requires the `mentor` role). If no mentee document exists yet for the
+        (requires the `mentor` or `admin` role). If no mentee document exists yet for the
         Profile, a default document is created and returned so the UI always
         receives a valid document.
       operationId: getMentee
@@ -1139,7 +1139,7 @@ paths:
       tags:
         - Mentee
       summary: Update Mentee notes document
-      description: Update a Mentee notes document (requires the `mentor` role). Cannot update _id, created, or saved fields.
+      description: Update a Mentee notes document (requires the `mentor` or `admin` role). Cannot update _id, created, or saved fields.
       operationId: updateMentee
       security:
         - bearerAuth: []
