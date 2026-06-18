@@ -1,6 +1,6 @@
 # L010 – Update OpenAPI from new Profile and Mentee schemas
 
-**Status**: Pending  
+**Status**: Shipped  
 **Type**: Feature  
 **Depends On**: none  
 **Description**: Fetch the latest `Profile` and `Mentee` JSON schemas from the MongoDB configurator and update `docs/openapi.yaml` to match. Define, contract-first, the composite Profile detail response (`Profile` + mentee notes + `Encounter` list) returned by `GET /api/profile/{_id}`, and the new `/api/mentee` endpoints. Implementation of the routes/services follows in L020–L030.
@@ -16,14 +16,14 @@ Always read these files before implementation:
 
 Additional inputs:
 
-- Latest schemas from the MongoDB configurator (configurator must be running, port `8385 you` may need to use ``mh up mongodb`` to start the API.)
+- Latest schemas from the MongoDB configurator (configurator must be running on port `8383`; you may need to use ``mh up mongodb`` to start the API).
 
 ```bash
 # Profile schema
-curl -X GET "http://localhost:8385/api/configurations/json_schema/Profile.yaml/latest/" -H "accept: application/json"
+curl -X GET "http://localhost:8383/api/configurations/json_schema/Profile.yaml/latest/" -H "accept: application/json"
 
 # Mentee schema
-curl -X GET "http://localhost:8385/api/configurations/json_schema/Mentee.yaml/latest/" -H "accept: application/json"
+curl -X GET "http://localhost:8383/api/configurations/json_schema/Mentee.yaml/latest/" -H "accept: application/json"
 ```
 
 - `../mentorhub_mongodb_api/configurator/dictionaries/Profile.*.yaml`
@@ -69,4 +69,19 @@ The agent must not update files outside this list.
 
 ## Execution Notes
 
-*Reserved for the task execution agent.*
+**Summary of changes** (`docs/openapi.yaml` only):
+- `Profile` schema synced to latest configurator schema: added `full_name`; removed `schedule` (now lives on `Mentee`).
+- Added `Mentee` schema (fields: `_id`, `name`, `profile_id`, `status` [active/archived], `description`, `focus`, `homework`, `notes`, `next_appointment`, `schedule {repeats, starting}`, `created`, `saved`; `additionalProperties: false`).
+- Added `MenteeUpdate` (patchable fields; excludes `_id`/`created`/`saved`).
+- Added `ProfileDetail` composite: `{ profile: Profile, mentee: Mentee, encounters: [Encounter, ...] }`.
+- `GET /api/profile/{ProfileId}` now returns `ProfileDetail` (200/401/403/404/500).
+- Added `Mentee` tag + paths `GET /api/mentee/{profile_id}` (200/401/403/500, create-if-missing documented) and `PATCH /api/mentee/{mentee_id}` (body `MenteeUpdate`; 200/401/403/404/500).
+
+**Testing results**
+- YAML parses (`pipenv run python -c "import yaml; yaml.safe_load(...)"`) — OK.
+- `$ref` check: 29 unique refs, 0 dangling; `Mentee`/`MenteeUpdate`/`ProfileDetail` defined.
+- `pipenv run lint`: pre-existing `black` failures over `src/`/`test/` Python only — unrelated to this YAML-only change.
+
+**Follow-ups**
+- `Profile.schedule` moved to `Mentee`; downstream code/tests in later tasks should not expect `schedule` on Profile.
+- Configurator runs on port `8383` in this environment (task curl corrected from 8385).

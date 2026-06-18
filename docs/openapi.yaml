@@ -40,6 +40,8 @@ tags:
     description: Event operations (create, read)
   - name: Profile
     description: Profile operations (read-only)
+  - name: Mentee
+    description: Mentee notes operations (read, update)
 paths:
   /api/config:
     get:
@@ -1030,8 +1032,11 @@ paths:
     get:
       tags:
         - Profile
-      summary: Get Profile by ProfileId
-      description: Retrieve a specific Profile document by its ProfileId (read-only). Requires the `mentor` role.
+      summary: Get Profile detail by ProfileId
+      description: |
+        Retrieve the composite detail for a specific mentee Profile (read-only).
+        Requires the `mentor` role. The response combines the Profile document,
+        the mentee notes document, and the full list of Encounters for the mentee.
       operationId: getProfile
       security:
         - bearerAuth: []
@@ -1046,11 +1051,85 @@ paths:
             example: 507f1f77bcf86cd799439011
       responses:
         '200':
-          description: Successfully retrieved Profile
+          description: Successfully retrieved Profile detail
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Profile'
+                $ref: '#/components/schemas/ProfileDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/mentee/{profile_id}:
+    get:
+      tags:
+        - Mentee
+      summary: Get Mentee notes by profile_id
+      description: |
+        Retrieve the mentee notes document for the given mentee Profile id
+        (requires the `mentor` role). If no mentee document exists yet for the
+        Profile, a default document is created and returned so the UI always
+        receives a valid document.
+      operationId: getMentee
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: profile_id
+          in: path
+          required: true
+          description: The mentee Profile ID (MongoDB ObjectId)
+          schema:
+            type: string
+            pattern: '^[0-9a-fA-F]{24}$'
+            example: 507f1f77bcf86cd799439011
+      responses:
+        '200':
+          description: Successfully retrieved Mentee notes document
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Mentee'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/mentee/{mentee_id}:
+    patch:
+      tags:
+        - Mentee
+      summary: Update Mentee notes document
+      description: Update a Mentee notes document (requires the `mentor` role). Cannot update _id, created, or saved fields.
+      operationId: updateMentee
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: mentee_id
+          in: path
+          required: true
+          description: The Mentee document ID (MongoDB ObjectId)
+          schema:
+            type: string
+            pattern: '^[0-9a-fA-F]{24}$'
+            example: 507f1f77bcf86cd799439011
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MenteeUpdate'
+      responses:
+        '200':
+          description: Mentee notes document updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Mentee'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -1801,6 +1880,11 @@ components:
           description: The IDP Username used in JWT Claims
           pattern: '^[^\s]{1,40}$'
           example: my-Profile
+        full_name:
+          type: string
+          description: Display name from intake (distinct from IdP username)
+          pattern: '^[^\t\n]{0,255}$'
+          example: Jane Doe
         description:
           type: string
           description: A Comment the user adds to their profile
@@ -1847,19 +1931,6 @@ components:
           items:
             type: string
             pattern: '^[^\t\n]{0,255}$'
-        schedule:
-          type: object
-          additionalProperties: false
-          description: When does the Mentor work with the Mentee
-          properties:
-            repeats:
-              type: integer
-              description: Meeting repeasts every N weeks
-              minimum: 1
-            starting:
-              type: string
-              format: date-time
-              description: When do meetings begin
         experience:
           type: array
           description: Work History - newest to oldest
@@ -1912,6 +1983,150 @@ components:
           $ref: '#/components/schemas/Breadcrumb'
         saved:
           $ref: '#/components/schemas/Breadcrumb'
+
+    Mentee:
+      type: object
+      description: Mentor notes about a Mentee
+      additionalProperties: false
+      required:
+        - _id
+        - created
+        - saved
+      properties:
+        _id:
+          type: string
+          description: The unique identifier for the Mentee document.
+          pattern: '^[0-9a-fA-F]{24}$'
+          example: 507f1f77bcf86cd799439011
+        name:
+          type: string
+          description: Searchable name for this mentoring record
+          pattern: '^[^\s]{1,40}$'
+          example: my-Mentee
+        profile_id:
+          type: string
+          description: The _id of the related mentee Profile document
+          pattern: '^[0-9a-fA-F]{24}$'
+          example: 507f1f77bcf86cd799439011
+        status:
+          type: string
+          description: Status of the document
+          enum:
+            - active
+            - archived
+          example: active
+        description:
+          type: string
+          description: Short summary of the mentoring relationship
+          pattern: '^[^\t\n]{0,255}$'
+          example: A sample Mentee notes document
+        focus:
+          type: string
+          description: Current mentoring focus for upcoming sessions
+          pattern: '^[^\t\n]{0,255}$'
+        homework:
+          type: string
+          description: Follow-up items or homework assigned to the mentee
+          maxLength: 4096
+        notes:
+          type: string
+          description: Mentor notes about this mentee (shared across mentors over time)
+          maxLength: 4096
+        next_appointment:
+          type: string
+          format: date-time
+          description: The next scheduled appointment date and time
+        schedule:
+          type: object
+          additionalProperties: false
+          description: Recurring appointment schedule for mentor and mentee meetings
+          properties:
+            repeats:
+              type: integer
+              description: Meeting repeats every N weeks
+              minimum: 1
+            starting:
+              type: string
+              format: date-time
+              description: When meetings begin
+        created:
+          $ref: '#/components/schemas/Breadcrumb'
+        saved:
+          $ref: '#/components/schemas/Breadcrumb'
+
+    MenteeUpdate:
+      type: object
+      description: Fields to update in a Mentee notes document (cannot include _id, created, saved)
+      properties:
+        name:
+          type: string
+          description: Searchable name for this mentoring record
+          pattern: '^[^\s]{1,40}$'
+        profile_id:
+          type: string
+          description: The _id of the related mentee Profile document
+          pattern: '^[0-9a-fA-F]{24}$'
+        status:
+          type: string
+          description: Status of the document
+          enum:
+            - active
+            - archived
+        description:
+          type: string
+          description: Short summary of the mentoring relationship
+          pattern: '^[^\t\n]{0,255}$'
+        focus:
+          type: string
+          description: Current mentoring focus for upcoming sessions
+          pattern: '^[^\t\n]{0,255}$'
+        homework:
+          type: string
+          description: Follow-up items or homework assigned to the mentee
+          maxLength: 4096
+        notes:
+          type: string
+          description: Mentor notes about this mentee (shared across mentors over time)
+          maxLength: 4096
+        next_appointment:
+          type: string
+          format: date-time
+          description: The next scheduled appointment date and time
+        schedule:
+          type: object
+          additionalProperties: false
+          description: Recurring appointment schedule for mentor and mentee meetings
+          properties:
+            repeats:
+              type: integer
+              description: Meeting repeats every N weeks
+              minimum: 1
+            starting:
+              type: string
+              format: date-time
+              description: When meetings begin
+
+    ProfileDetail:
+      type: object
+      description: |
+        Composite Profile detail returned by `GET /api/profile/{ProfileId}`.
+        Combines the mentee's Profile document, the mentee notes document, and
+        the full list of the mentee's Encounters.
+      additionalProperties: false
+      required:
+        - profile
+        - mentee
+        - encounters
+      properties:
+        profile:
+          $ref: '#/components/schemas/Profile'
+        mentee:
+          $ref: '#/components/schemas/Mentee'
+        encounters:
+          type: array
+          description: The mentee's Encounters
+          items:
+            $ref: '#/components/schemas/Encounter'
 
     MentorDashboardProfile:
       type: object
