@@ -40,6 +40,7 @@ from src.routes.plan_routes import create_plan_routes
 from src.routes.encounter_routes import create_encounter_routes
 from src.routes.event_routes import create_event_routes
 from src.routes.profile_routes import create_profile_routes
+from src.routes.mentee_routes import create_mentee_routes
 # Register route blueprints
 # Register explorer routes with template's docs directory
 docs_dir = os.path.join(os.path.dirname(__file__), '..', 'docs')
@@ -51,6 +52,7 @@ app.register_blueprint(create_plan_routes(), url_prefix='/api/plan')
 app.register_blueprint(create_encounter_routes(), url_prefix='/api/encounter')
 app.register_blueprint(create_event_routes(), url_prefix='/api/event')
 app.register_blueprint(create_profile_routes(), url_prefix='/api/profile')
+app.register_blueprint(create_mentee_routes(), url_prefix='/api/mentee')
 metrics = create_metric_routes(app)  # This exposes /metrics endpoint
 
 logger.info("============= Routes Registered ===============")
@@ -61,6 +63,7 @@ logger.info("  /api/plan - Plan domain endpoints")
 logger.info("  /api/encounter - Encounter domain endpoints")
 logger.info("  /api/event - Event domain endpoints")
 logger.info("  /api/profile - Profile domain endpoints")
+logger.info("  /api/mentee - Mentee domain endpoints")
 logger.info("  /docs - API Explorer")
 logger.info("  /metrics - Prometheus metrics endpoint")
 
