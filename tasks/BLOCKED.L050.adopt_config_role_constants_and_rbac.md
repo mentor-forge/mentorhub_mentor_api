@@ -1,6 +1,6 @@
 # L050 – Adopt shared Config role constants and allow admin + mentor
 
-**Status**: Pending  
+**Status**: Blocked  
 **Type**: Feature  
 **Depends On**: L040  
 **Description**: Replace locally declared role strings with the shared role constants on `api_utils.Config`, and update the RBAC permission checks to authorize **both** the `admin` and `mentor` roles. Bump the `api-utils` version pin in the `Pipfile` to the published version that exposes the role constants.
@@ -61,4 +61,15 @@ The agent must not update files outside this list.
 
 ## Execution Notes
 
-_Reserved for the task execution agent._
+**BLOCKED on external prerequisite (api_utils role constants not published).**
+
+Pre-flight verification (2026-06-18):
+- Imported `api_utils` resolves to the editable working tree `../mentorhub_api_utils` (`api_utils.__file__` → `.../mentorhub_api_utils/api_utils/__init__.py`), currently on branch `main`.
+- `Config` exposes **no** role constants: `hasattr(Config, 'MENTOR_ROLE') == False`, `hasattr(Config, 'ADMIN_ROLE') == False`, `[a for a in dir(Config) if 'ROLE' in a] == []`.
+- `Pipfile` still pins `api-utils == 0.2.1`; no newer version with role constants is resolvable.
+
+Because the shared role constants do not exist in the `api_utils` this repo imports, this task cannot adopt them or bump the pin. Per the task's external-prerequisite rule, Status is set to **Blocked** and execution stopped.
+
+**To unblock:** publish an `api_utils` version that defines the role constants (e.g. `Config.MENTOR_ROLE`, `Config.ADMIN_ROLE`, and ideally `MENTEE_COLLECTION_NAME`), then bump the `Pipfile` pin and re-run this task.
+
+**Interim option (not done here, requires approval):** the "allow admin + mentor" half could be implemented now using local role strings in each service's `_check_permission`, deferring the shared-constant adoption to when api_utils ships. This deviates from the task as written, so it was left for the developer to decide.
