@@ -16,7 +16,7 @@ Always read these files before implementation:
 
 Additional inputs:
 
-- Latest schemas from the MongoDB configurator (configurator must be running, port `8385`):
+- Latest schemas from the MongoDB configurator (configurator must be running, port `8385 you` may need to use ``mh up mongodb`` to start the API.)
 
 ```bash
 # Profile schema
@@ -30,11 +30,11 @@ curl -X GET "http://localhost:8385/api/configurations/json_schema/Mentee.yaml/la
 - `../mentorhub_mongodb_api/configurator/dictionaries/Mentee.*.yaml`
 - Existing `docs/openapi.yaml` paths/schemas for `Profile` and `Encounter`, and the security scheme.
 
-**External prerequisite**: the MongoDB `Profile` and `Mentee` dictionaries are current and the configurator serves the latest schemas at the URLs above. If the configurator is unavailable or the schemas are not current, set **Status** to `Blocked` and stop.
+**External prerequisite**: the MongoDB `Profile` and `Mentee` dictionaries are current and the configurator serves the latest schemas at the URLs above. If the configurator is unavailable try starting it with ``mh up mongodb`` and if the API call still fails halt and report an error.
 
 ## Goals
 
-- `docs/openapi.yaml` `Profile` component schema matches the latest `Profile.yaml` from the configurator (properties, types, descriptions, optionality).
+- `docs/openapi.yaml` GET `Profile` component schema matches the latest `Profile.yaml` from the configurator (properties, types, descriptions, optionality) with Profile, Mentee and Encounter data.
 - New `Mentee` component schema in `docs/openapi.yaml` matches the latest `Mentee.yaml` (the mentee-notes document).
 - New `MenteeUpdate` schema describing the patchable fields of `Mentee` (system-managed fields such as `_id`, `created`, `saved` are excluded).
 - New `ProfileDetail` schema describing the composite returned by `GET /api/profile/{_id}`: `{ profile: Profile, mentee: Mentee, encounters: [Encounter, ...] }`.
@@ -69,4 +69,4 @@ The agent must not update files outside this list.
 
 ## Execution Notes
 
-_Reserved for the task execution agent._
+*Reserved for the task execution agent.*
