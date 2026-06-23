@@ -1,6 +1,6 @@
 # L070 – Implement Plan `steps` ⇄ `checklist` mapping in service + tests
 
-**Status**: Pending  
+**Status**: Shipped  
 **Type**: Feature  
 **Depends On**: L060  
 **Description**: Implement the API↔storage mapping for the Plan list field. The API contract uses `steps`; MongoDB stores `checklist` (per the `Plan` data dictionary, `additional_properties: false`). `PlanService` translates `steps`→`checklist` on the way into Mongo (create/update) and `checklist`→`steps` on the way out (get one, list items), and validates `steps` input. Routes need no change (they pass the request body and return the service result).
@@ -53,4 +53,22 @@ The agent must not update files outside this list.
 
 ## Execution Notes
 
-_Reserved for the execution agent._
+**Summary of changes**:
+- `src/services/plan_service.py`:
+  - Added constants `API_LIST_FIELD = "steps"`, `STORAGE_LIST_FIELD = "checklist"`, `MAX_STEPS = 100`, `MAX_STEP_LENGTH = 255`.
+  - `_validate_steps`: list of non-empty single-line strings, ≤255 chars each, ≤100 items, else `HTTPBadRequest`.
+  - `_map_steps_to_storage`: shallow-copies inbound data, validates+renames `steps`→`checklist`; never leaves a top-level `steps` (which Mongo would reject).
+  - `_map_checklist_to_api`: renames stored `checklist`→`steps` on the way out (no-op when absent / falsy — never invents an empty `steps`).
+  - Wired mapping into `create_plan` (in), `update_plan` (in + out), `get_plan` (out), `get_plans` (each item out). Added `HTTPBadRequest` to the re-raise tuples in `create_plan`/`update_plan` so validation surfaces as 400 (not wrapped to 500).
+- Routes unchanged — they forward the JSON body and jsonify the service result, so the mapping is transparent to the route layer.
+- `test/services/test_plan_service.py`: added `steps`→`checklist` create/update, `checklist`→`steps` get/list, and validation tests (non-list, non-string, empty, tab/newline, over-length, over-count).
+
+**Testing results**
+- `pipenv run test`: 195 passed, 29 deselected (e2e).
+- Plan-only: `test_plan_service.py` + `test_plan_routes.py` = 30 passed.
+- `pipenv run build`: OK.
+- `pipenv run lint`: edited files formatted with `black`; pre-existing `black` findings in unrelated files left untouched.
+
+**Follow-ups**
+- E2E `steps` round-trip not added/run yet — requires live configurator+db (`pipenv run db && pipenv run dev && pipenv run e2e`). Existing `test/e2e/test_plan.py` left unchanged.
+- When the Encounter feature lands ("populate the checklist from the plan"), it reads the stored `checklist` directly — consistent with this storage field.

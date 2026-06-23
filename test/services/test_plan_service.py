@@ -1,6 +1,7 @@
 """
 Unit tests for Plan service.
 """
+
 import unittest
 from unittest.mock import patch, MagicMock
 from bson import ObjectId
@@ -44,9 +45,7 @@ class TestPlanService(unittest.TestCase):
             "status": "active",
         }
 
-        plan_id = PlanService.create_plan(
-            data, self.mock_token, self.mock_breadcrumb
-        )
+        plan_id = PlanService.create_plan(data, self.mock_token, self.mock_breadcrumb)
 
         self.assertEqual(plan_id, "123")
         mock_mongo.create_document.assert_called_once()
@@ -71,9 +70,7 @@ class TestPlanService(unittest.TestCase):
 
         data = {"_id": "should-be-removed", "name": "test"}
 
-        PlanService.create_plan(
-            data, self.mock_token, self.mock_breadcrumb
-        )
+        PlanService.create_plan(data, self.mock_token, self.mock_breadcrumb)
 
         call_args = mock_mongo.create_document.call_args
         created_data = call_args[0][1]
@@ -103,9 +100,7 @@ class TestPlanService(unittest.TestCase):
         mock_mongo.get_collection.return_value = mock_collection
         mock_get_mongo.return_value = mock_mongo
 
-        result = PlanService.get_plans(
-            self.mock_token, self.mock_breadcrumb, limit=10
-        )
+        result = PlanService.get_plans(self.mock_token, self.mock_breadcrumb, limit=10)
 
         self.assertIn("items", result)
         self.assertIn("limit", result)
@@ -128,9 +123,7 @@ class TestPlanService(unittest.TestCase):
         mock_get_mongo.return_value = mock_mongo
 
         with self.assertRaises(HTTPBadRequest) as context:
-            PlanService.get_plans(
-                self.mock_token, self.mock_breadcrumb, limit=0
-            )
+            PlanService.get_plans(self.mock_token, self.mock_breadcrumb, limit=0)
         self.assertIn("limit must be >= 1", str(context.exception))
 
     @patch("src.services.plan_service.Config.get_instance")
@@ -145,9 +138,7 @@ class TestPlanService(unittest.TestCase):
         mock_get_mongo.return_value = mock_mongo
 
         with self.assertRaises(HTTPBadRequest) as context:
-            PlanService.get_plans(
-                self.mock_token, self.mock_breadcrumb, limit=101
-            )
+            PlanService.get_plans(self.mock_token, self.mock_breadcrumb, limit=101)
         self.assertIn("limit must be <= 100", str(context.exception))
 
     @patch("src.services.plan_service.Config.get_instance")
@@ -205,7 +196,9 @@ class TestPlanService(unittest.TestCase):
                 self.mock_breadcrumb,
                 after_id="invalid",
             )
-        self.assertIn("after_id must be a valid MongoDB ObjectId", str(context.exception))
+        self.assertIn(
+            "after_id must be a valid MongoDB ObjectId", str(context.exception)
+        )
 
     @patch("src.services.plan_service.Config.get_instance")
     @patch("src.services.plan_service.MongoIO.get_instance")
@@ -222,9 +215,7 @@ class TestPlanService(unittest.TestCase):
         }
         mock_get_mongo.return_value = mock_mongo
 
-        result = PlanService.get_plan(
-            "123", self.mock_token, self.mock_breadcrumb
-        )
+        result = PlanService.get_plan("123", self.mock_token, self.mock_breadcrumb)
 
         self.assertIsNotNone(result)
         self.assertEqual(result["_id"], "123")
@@ -243,9 +234,7 @@ class TestPlanService(unittest.TestCase):
         mock_get_mongo.return_value = mock_mongo
 
         with self.assertRaises(HTTPNotFound) as context:
-            PlanService.get_plan(
-                "999", self.mock_token, self.mock_breadcrumb
-            )
+            PlanService.get_plan("999", self.mock_token, self.mock_breadcrumb)
         self.assertIn("999", str(context.exception))
 
     @patch("src.services.plan_service.Config.get_instance")
@@ -293,23 +282,17 @@ class TestPlanService(unittest.TestCase):
 
         data = {"_id": "999", "name": "Updated"}
         with self.assertRaises(HTTPForbidden) as context:
-            PlanService.update_plan(
-                "123", data, self.mock_token, self.mock_breadcrumb
-            )
+            PlanService.update_plan("123", data, self.mock_token, self.mock_breadcrumb)
         self.assertIn("_id", str(context.exception))
 
         data = {"created": {"at_time": "2024-01-01T00:00:00Z"}, "name": "Updated"}
         with self.assertRaises(HTTPForbidden) as context:
-            PlanService.update_plan(
-                "123", data, self.mock_token, self.mock_breadcrumb
-            )
+            PlanService.update_plan("123", data, self.mock_token, self.mock_breadcrumb)
         self.assertIn("created", str(context.exception))
 
         data = {"saved": {"at_time": "2024-01-01T00:00:00Z"}, "name": "Updated"}
         with self.assertRaises(HTTPForbidden) as context:
-            PlanService.update_plan(
-                "123", data, self.mock_token, self.mock_breadcrumb
-            )
+            PlanService.update_plan("123", data, self.mock_token, self.mock_breadcrumb)
         self.assertIn("saved", str(context.exception))
 
     @patch("src.services.plan_service.Config.get_instance")
@@ -363,9 +346,7 @@ class TestPlanService(unittest.TestCase):
 
     @patch("src.services.plan_service.Config.get_instance")
     @patch("src.services.plan_service.MongoIO.get_instance")
-    def test_create_plan_handles_exception(
-        self, mock_get_mongo, mock_get_config
-    ):
+    def test_create_plan_handles_exception(self, mock_get_mongo, mock_get_config):
         """Test create_plan handles database exceptions."""
         mock_config = MagicMock()
         mock_config.PLAN_COLLECTION_NAME = "Plan"
@@ -382,9 +363,7 @@ class TestPlanService(unittest.TestCase):
 
     @patch("src.services.plan_service.Config.get_instance")
     @patch("src.services.plan_service.MongoIO.get_instance")
-    def test_get_plans_handles_exception(
-        self, mock_get_mongo, mock_get_config
-    ):
+    def test_get_plans_handles_exception(self, mock_get_mongo, mock_get_config):
         """Test get_plans handles database exceptions."""
         mock_config = MagicMock()
         mock_config.PLAN_COLLECTION_NAME = "Plan"
@@ -398,15 +377,11 @@ class TestPlanService(unittest.TestCase):
         mock_get_mongo.return_value = mock_mongo
 
         with self.assertRaises(HTTPInternalServerError):
-            PlanService.get_plans(
-                self.mock_token, self.mock_breadcrumb
-            )
+            PlanService.get_plans(self.mock_token, self.mock_breadcrumb)
 
     @patch("src.services.plan_service.Config.get_instance")
     @patch("src.services.plan_service.MongoIO.get_instance")
-    def test_get_plan_handles_exception(
-        self, mock_get_mongo, mock_get_config
-    ):
+    def test_get_plan_handles_exception(self, mock_get_mongo, mock_get_config):
         """Test get_plan handles database exceptions."""
         mock_config = MagicMock()
         mock_config.PLAN_COLLECTION_NAME = "Plan"
@@ -417,15 +392,11 @@ class TestPlanService(unittest.TestCase):
         mock_get_mongo.return_value = mock_mongo
 
         with self.assertRaises(HTTPInternalServerError):
-            PlanService.get_plan(
-                "123", self.mock_token, self.mock_breadcrumb
-            )
+            PlanService.get_plan("123", self.mock_token, self.mock_breadcrumb)
 
     @patch("src.services.plan_service.Config.get_instance")
     @patch("src.services.plan_service.MongoIO.get_instance")
-    def test_update_plan_handles_exception(
-        self, mock_get_mongo, mock_get_config
-    ):
+    def test_update_plan_handles_exception(self, mock_get_mongo, mock_get_config):
         """Test update_plan handles database exceptions."""
         mock_config = MagicMock()
         mock_config.PLAN_COLLECTION_NAME = "Plan"
@@ -439,6 +410,151 @@ class TestPlanService(unittest.TestCase):
             PlanService.update_plan(
                 "123", {"name": "updated"}, self.mock_token, self.mock_breadcrumb
             )
+
+    @patch("src.services.plan_service.Config.get_instance")
+    @patch("src.services.plan_service.MongoIO.get_instance")
+    def test_create_plan_maps_steps_to_checklist(self, mock_get_mongo, mock_get_config):
+        """API `steps` is persisted as storage `checklist` (no `steps` key)."""
+        mock_config = MagicMock()
+        mock_config.PLAN_COLLECTION_NAME = "Plan"
+        mock_get_config.return_value = mock_config
+
+        mock_mongo = MagicMock()
+        mock_mongo.create_document.return_value = "123"
+        mock_get_mongo.return_value = mock_mongo
+
+        data = {"name": "test-plan", "steps": ["step one", "step two"]}
+        PlanService.create_plan(data, self.mock_token, self.mock_breadcrumb)
+
+        created_data = mock_mongo.create_document.call_args[0][1]
+        self.assertNotIn("steps", created_data)
+        self.assertEqual(created_data["checklist"], ["step one", "step two"])
+
+    @patch("src.services.plan_service.Config.get_instance")
+    @patch("src.services.plan_service.MongoIO.get_instance")
+    def test_update_plan_maps_steps_to_checklist(self, mock_get_mongo, mock_get_config):
+        """Update maps API `steps` to storage `checklist` in set_data."""
+        mock_config = MagicMock()
+        mock_config.PLAN_COLLECTION_NAME = "Plan"
+        mock_get_config.return_value = mock_config
+
+        mock_mongo = MagicMock()
+        mock_mongo.update_document.return_value = {"_id": "123", "checklist": ["a"]}
+        mock_get_mongo.return_value = mock_mongo
+
+        updated = PlanService.update_plan(
+            "123", {"steps": ["a"]}, self.mock_token, self.mock_breadcrumb
+        )
+
+        set_data = mock_mongo.update_document.call_args[1]["set_data"]
+        self.assertNotIn("steps", set_data)
+        self.assertEqual(set_data["checklist"], ["a"])
+        # Response maps storage checklist back to API steps
+        self.assertNotIn("checklist", updated)
+        self.assertEqual(updated["steps"], ["a"])
+
+    @patch("src.services.plan_service.Config.get_instance")
+    @patch("src.services.plan_service.MongoIO.get_instance")
+    def test_get_plan_maps_checklist_to_steps(self, mock_get_mongo, mock_get_config):
+        """get_plan exposes stored `checklist` as API `steps`."""
+        mock_config = MagicMock()
+        mock_config.PLAN_COLLECTION_NAME = "Plan"
+        mock_get_config.return_value = mock_config
+
+        mock_mongo = MagicMock()
+        mock_mongo.get_document.return_value = {
+            "_id": "123",
+            "name": "plan1",
+            "checklist": ["do x", "do y"],
+        }
+        mock_get_mongo.return_value = mock_mongo
+
+        result = PlanService.get_plan("123", self.mock_token, self.mock_breadcrumb)
+
+        self.assertNotIn("checklist", result)
+        self.assertEqual(result["steps"], ["do x", "do y"])
+
+    @patch("src.services.plan_service.Config.get_instance")
+    @patch("src.services.plan_service.MongoIO.get_instance")
+    def test_get_plans_maps_checklist_to_steps(self, mock_get_mongo, mock_get_config):
+        """get_plans exposes stored `checklist` as API `steps` for each item."""
+        mock_config = MagicMock()
+        mock_config.PLAN_COLLECTION_NAME = "Plan"
+        mock_get_config.return_value = mock_config
+
+        mock_collection = MagicMock()
+        mock_cursor = MagicMock()
+        mock_collection.find.return_value = mock_cursor
+        mock_cursor.sort.return_value = mock_cursor
+        mock_cursor.limit.return_value = mock_cursor
+        mock_cursor.__iter__ = lambda self: iter(
+            [
+                {
+                    "_id": ObjectId("507f1f77bcf86cd799439011"),
+                    "name": "plan1",
+                    "checklist": ["one"],
+                },
+                {"_id": ObjectId("507f1f77bcf86cd799439012"), "name": "plan2"},
+            ]
+        )
+
+        mock_mongo = MagicMock()
+        mock_mongo.get_collection.return_value = mock_collection
+        mock_get_mongo.return_value = mock_mongo
+
+        result = PlanService.get_plans(self.mock_token, self.mock_breadcrumb, limit=10)
+
+        items = result["items"]
+        self.assertEqual(items[0]["steps"], ["one"])
+        self.assertNotIn("checklist", items[0])
+        # Items without a checklist are left unchanged (no steps key invented)
+        self.assertNotIn("steps", items[1])
+        self.assertNotIn("checklist", items[1])
+
+    @patch("src.services.plan_service.Config.get_instance")
+    @patch("src.services.plan_service.MongoIO.get_instance")
+    def test_create_plan_rejects_invalid_steps(self, mock_get_mongo, mock_get_config):
+        """Invalid `steps` values raise HTTPBadRequest before any write."""
+        mock_config = MagicMock()
+        mock_config.PLAN_COLLECTION_NAME = "Plan"
+        mock_get_config.return_value = mock_config
+        mock_mongo = MagicMock()
+        mock_get_mongo.return_value = mock_mongo
+
+        invalid_values = [
+            "not-a-list",
+            [123],
+            [""],
+            ["   "],
+            ["bad\tstep"],
+            ["bad\nstep"],
+            ["x" * 256],
+            [f"step {i}" for i in range(101)],
+        ]
+        for value in invalid_values:
+            with self.assertRaises(HTTPBadRequest):
+                PlanService.create_plan(
+                    {"name": "p", "steps": value},
+                    self.mock_token,
+                    self.mock_breadcrumb,
+                )
+        mock_mongo.create_document.assert_not_called()
+
+    @patch("src.services.plan_service.Config.get_instance")
+    @patch("src.services.plan_service.MongoIO.get_instance")
+    def test_update_plan_rejects_invalid_steps(self, mock_get_mongo, mock_get_config):
+        """Invalid `steps` on update raise HTTPBadRequest before any write."""
+        mock_config = MagicMock()
+        mock_config.PLAN_COLLECTION_NAME = "Plan"
+        mock_get_config.return_value = mock_config
+        mock_mongo = MagicMock()
+        mock_get_mongo.return_value = mock_mongo
+
+        with self.assertRaises(HTTPBadRequest):
+            PlanService.update_plan(
+                "123", {"steps": [""]}, self.mock_token, self.mock_breadcrumb
+            )
+        mock_mongo.update_document.assert_not_called()
 
 
 if __name__ == "__main__":
