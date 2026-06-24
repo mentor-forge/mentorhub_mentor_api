@@ -33,14 +33,12 @@ def create_event_routes():
         
         Request body (JSON):
         {
-            "name": "value",
-            "description": "value",
-            "status": "active",
-            ...
+            "type": "login",
+            "context": { "profile_id": "507f1f77bcf86cd799439011" }
         }
         
         Returns:
-            JSON response with the eventd event document including _id
+            JSON response with the created event document including _id
         """
         token = create_flask_token()
         breadcrumb = create_flask_breadcrumb(token)
@@ -56,13 +54,12 @@ def create_event_routes():
     @handle_route_exceptions
     def get_events():
         """
-        GET /api/event - Retrieve infinite scroll batch of sorted, filtered event documents.
+        GET /api/event - Retrieve infinite scroll batch of sorted event documents.
         
         Query Parameters:
-            name: Optional name filter
             after_id: Cursor for infinite scroll (ID of last item from previous batch, omit for first request)
             limit: Items per batch (default: 10, max: 100)
-            sort_by: Field to sort by (default: 'name')
+            sort_by: Field to sort by (default: 'created.at_time'; one of: type, created.at_time)
             order: Sort order 'asc' or 'desc' (default: 'asc')
         
         Returns:
@@ -80,10 +77,9 @@ def create_event_routes():
         breadcrumb = create_flask_breadcrumb(token)
         
         # Get query parameters
-        name = request.args.get('name')
         after_id = request.args.get('after_id')
         limit = request.args.get('limit', 10, type=int)
-        sort_by = request.args.get('sort_by', 'name')
+        sort_by = request.args.get('sort_by', 'created.at_time')
         order = request.args.get('order', 'asc')
         
         # Service layer validates parameters and raises HTTPBadRequest if invalid
@@ -91,7 +87,6 @@ def create_event_routes():
         result = EventService.get_events(
             token, 
             breadcrumb, 
-            name=name,
             after_id=after_id,
             limit=limit,
             sort_by=sort_by,

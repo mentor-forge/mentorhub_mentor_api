@@ -30,8 +30,8 @@ def test_create_event_endpoint():
     token = get_auth_token()
     headers = {"Authorization": f"Bearer {token}"}
     data = {
-        "name": "login",
-        "description": "E2E test event document",
+        "type": "login",
+        "context": {"profile_id": "000000000000000000000001"},
     }
 
     response = requests.post(f"{BASE_URL}/api/event", headers=headers, json=data)
@@ -39,7 +39,7 @@ def test_create_event_endpoint():
 
     response_data = response.json()
     assert "_id" in response_data, "Response missing '_id' key"
-    assert response_data["name"] == "login"
+    assert response_data["type"] == "login"
     assert "created" in response_data
 
 

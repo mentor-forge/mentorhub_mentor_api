@@ -5,13 +5,19 @@ Handles RBAC checks and MongoDB operations for Event domain.
 """
 from api_utils import MongoIO, Config
 from api_utils.flask_utils.exceptions import HTTPBadRequest, HTTPForbidden, HTTPNotFound, HTTPInternalServerError
-from api_utils.mongo_utils import execute_infinite_scroll_query
+from api_utils.mongo_utils import execute_infinite_scroll_query, encode_document
 import logging
 
 logger = logging.getLogger(__name__)
 
 # Allowed sort fields for Event domain
-ALLOWED_SORT_FIELDS = ['name', 'description', 'created.at_time']
+ALLOWED_SORT_FIELDS = ['type', 'created.at_time']
+
+# Identifier fields stored as BSON ObjectId per the Event dictionary
+# (the schema validator rejects string ids). encode_document recurses into
+# nested objects, so this also covers context.profile_id.
+ID_PROPERTIES = ['_id', 'profile_id']
+DATE_PROPERTIES = []
 
 
 class EventService:
@@ -70,6 +76,10 @@ class EventService:
             if '_id' in data:
                 del data['_id']
             
+            # Encode identifier fields (e.g. context.profile_id) to BSON ObjectId
+            # so the collection's $jsonSchema validator accepts the document.
+            encode_document(data, ID_PROPERTIES, DATE_PROPERTIES)
+            
             # Automatically populate required field: created
             # This is system-managed and should not be provided by the client
             # Use breadcrumb directly as it already has the correct structure
@@ -88,17 +98,16 @@ class EventService:
             raise HTTPInternalServerError(f"Failed to create event: {error_msg}")
     
     @staticmethod
-    def get_events(token, breadcrumb, name=None, after_id=None, limit=10, sort_by='name', order='asc'):
+    def get_events(token, breadcrumb, after_id=None, limit=10, sort_by='created.at_time', order='asc'):
         """
-        Get infinite scroll batch of sorted, filtered event documents.
+        Get infinite scroll batch of sorted event documents.
         
         Args:
             token: Authentication token
             breadcrumb: Audit breadcrumb
-            name: Optional name filter (simple search)
             after_id: Cursor (ID of last item from previous batch, None for first request)
             limit: Items per batch
-            sort_by: Field to sort by
+            sort_by: Field to sort by (one of: type, created.at_time)
             order: Sort order ('asc' or 'desc')
         
         Returns:
@@ -119,7 +128,6 @@ class EventService:
             collection = mongo.get_collection(config.EVENT_COLLECTION_NAME)
             result = execute_infinite_scroll_query(
                 collection,
-                name=name,
                 after_id=after_id,
                 limit=limit,
                 sort_by=sort_by,

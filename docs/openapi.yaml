@@ -1848,11 +1848,10 @@ components:
           maxLength: 4096
     Event:
       type: object
-      description: A meaningful event for a user.
+      description: A meaningful event in the system.
       additionalProperties: false
       required:
         - _id
-        - name
         - created
       properties:
         _id:
@@ -1860,43 +1859,63 @@ components:
           description: The unique identifier for the Event.
           pattern: '^[0-9a-fA-F]{24}$'
           example: 507f1f77bcf86cd799439011
-        name:
+        type:
           type: string
           description: The event type
           enum:
-            - arrived
-            - completed
-            - fail
             - login
             - logout
+            - fail
+            - arrived
+            - completed
+            - started
+            - encounter
+            - note
+            - link
+            - advanced
           example: login
-        description:
-          type: string
-          description: The Context of the Event.(Event Data)
-          pattern: '^[^\t\n]{0,255}$'
-          example: A sample Event document
+        context:
+          type: object
+          description: Context for the event (additional properties allowed)
+          additionalProperties: true
+          properties:
+            profile_id:
+              type: string
+              description: Profile associated with the event
+              pattern: '^[0-9a-fA-F]{24}$'
+              example: 507f1f77bcf86cd799439011
         created:
           $ref: '#/components/schemas/Breadcrumb'
 
     EventInput:
       type: object
-      description: Input for creating a Event document
+      description: Input for creating an Event document
       properties:
-        name:
+        type:
           type: string
           description: The event type
           enum:
-            - arrived
-            - completed
-            - fail
             - login
             - logout
+            - fail
+            - arrived
+            - completed
+            - started
+            - encounter
+            - note
+            - link
+            - advanced
           example: login
-        description:
-          type: string
-          description: The Context of the Event.(Event Data)
-          pattern: '^[^\t\n]{0,255}$'
-          example: A sample Event document
+        context:
+          type: object
+          description: Context for the event (additional properties allowed)
+          additionalProperties: true
+          properties:
+            profile_id:
+              type: string
+              description: Profile associated with the event
+              pattern: '^[0-9a-fA-F]{24}$'
+              example: 507f1f77bcf86cd799439011
     Profile:
       type: object
       description: User Preferences associated with one **Identity**.
