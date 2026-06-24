@@ -11,7 +11,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 # Allowed sort fields for Event domain
-ALLOWED_SORT_FIELDS = ['name', 'description', 'created.at_time']
+ALLOWED_SORT_FIELDS = ['type', 'created.at_time']
 
 
 class EventService:
@@ -88,17 +88,16 @@ class EventService:
             raise HTTPInternalServerError(f"Failed to create event: {error_msg}")
     
     @staticmethod
-    def get_events(token, breadcrumb, name=None, after_id=None, limit=10, sort_by='name', order='asc'):
+    def get_events(token, breadcrumb, after_id=None, limit=10, sort_by='created.at_time', order='asc'):
         """
-        Get infinite scroll batch of sorted, filtered event documents.
+        Get infinite scroll batch of sorted event documents.
         
         Args:
             token: Authentication token
             breadcrumb: Audit breadcrumb
-            name: Optional name filter (simple search)
             after_id: Cursor (ID of last item from previous batch, None for first request)
             limit: Items per batch
-            sort_by: Field to sort by
+            sort_by: Field to sort by (one of: type, created.at_time)
             order: Sort order ('asc' or 'desc')
         
         Returns:
@@ -119,7 +118,6 @@ class EventService:
             collection = mongo.get_collection(config.EVENT_COLLECTION_NAME)
             result = execute_infinite_scroll_query(
                 collection,
-                name=name,
                 after_id=after_id,
                 limit=limit,
                 sort_by=sort_by,

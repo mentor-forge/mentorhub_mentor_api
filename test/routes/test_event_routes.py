@@ -40,13 +40,13 @@ class TestEventRoutes(unittest.TestCase):
         mock_create_event.return_value = "123"
         mock_get_event.return_value = {
             "_id": "123",
-            "name": "test-event",
-            "status": "active",
+            "type": "login",
+            "context": {"profile_id": "000000000000000000000001"},
         }
 
         response = self.client.post(
             "/api/event",
-            json={"name": "test-event", "status": "active"},
+            json={"type": "login", "context": {"profile_id": "000000000000000000000001"}},
         )
 
         self.assertEqual(response.status_code, 201)
@@ -72,8 +72,8 @@ class TestEventRoutes(unittest.TestCase):
 
         mock_get_events.return_value = {
             "items": [
-                {"_id": "123", "name": "event1"},
-                {"_id": "456", "name": "event2"},
+                {"_id": "123", "type": "login"},
+                {"_id": "456", "type": "logout"},
             ],
             "limit": 10,
             "has_more": False,
@@ -90,10 +90,9 @@ class TestEventRoutes(unittest.TestCase):
         mock_get_events.assert_called_once_with(
             self.mock_token,
             self.mock_breadcrumb,
-            name=None,
             after_id=None,
             limit=10,
-            sort_by="name",
+            sort_by="created.at_time",
             order="asc",
         )
 
@@ -112,7 +111,7 @@ class TestEventRoutes(unittest.TestCase):
 
         mock_get_event.return_value = {
             "_id": "123",
-            "name": "event1",
+            "type": "login",
         }
 
         response = self.client.get("/api/event/123")
@@ -157,7 +156,7 @@ class TestEventRoutes(unittest.TestCase):
 
         response = self.client.post(
             "/api/event",
-            json={"name": "test"},
+            json={"type": "login"},
         )
 
         self.assertEqual(response.status_code, 401)

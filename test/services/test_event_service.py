@@ -39,9 +39,8 @@ class TestEventService(unittest.TestCase):
         mock_get_mongo.return_value = mock_mongo
 
         data = {
-            "name": "test-event",
-            "description": "Test event",
-            "status": "active",
+            "type": "login",
+            "context": {"profile_id": "000000000000000000000001"},
         }
 
         event_id = EventService.create_event(
@@ -54,7 +53,7 @@ class TestEventService(unittest.TestCase):
         self.assertEqual(call_args[0][0], "Event")
         created_data = call_args[0][1]
         self.assertIn("created", created_data)
-        self.assertEqual(created_data["name"], "test-event")
+        self.assertEqual(created_data["type"], "login")
 
     @patch("src.services.event_service.Config.get_instance")
     @patch("src.services.event_service.MongoIO.get_instance")
@@ -68,7 +67,7 @@ class TestEventService(unittest.TestCase):
         mock_mongo.create_document.return_value = "123"
         mock_get_mongo.return_value = mock_mongo
 
-        data = {"_id": "should-be-removed", "name": "test"}
+        data = {"_id": "should-be-removed", "type": "login"}
 
         EventService.create_event(
             data, self.mock_token, self.mock_breadcrumb
@@ -100,7 +99,7 @@ class TestEventService(unittest.TestCase):
         }
 
         result = EventService.create_event(
-            {"name": "test"}, self.mock_token, breadcrumb
+            {"type": "login"}, self.mock_token, breadcrumb
         )
 
         self.assertEqual(result, "123")
@@ -124,8 +123,8 @@ class TestEventService(unittest.TestCase):
         mock_cursor.limit.return_value = mock_cursor
         mock_cursor.__iter__ = lambda self: iter(
             [
-                {"_id": ObjectId("507f1f77bcf86cd799439011"), "name": "event1"},
-                {"_id": ObjectId("507f1f77bcf86cd799439012"), "name": "event2"},
+                {"_id": ObjectId("507f1f77bcf86cd799439011"), "type": "login"},
+                {"_id": ObjectId("507f1f77bcf86cd799439012"), "type": "logout"},
             ]
         )
 
@@ -248,7 +247,7 @@ class TestEventService(unittest.TestCase):
         mock_mongo = MagicMock()
         mock_mongo.get_document.return_value = {
             "_id": "123",
-            "name": "event1",
+            "type": "login",
         }
         mock_get_mongo.return_value = mock_mongo
 
@@ -316,7 +315,7 @@ class TestEventService(unittest.TestCase):
 
         with self.assertRaises(HTTPInternalServerError):
             EventService.create_event(
-                {"name": "test"}, self.mock_token, self.mock_breadcrumb
+                {"type": "login"}, self.mock_token, self.mock_breadcrumb
             )
 
     @patch("src.services.event_service.Config.get_instance")
