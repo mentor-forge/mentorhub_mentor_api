@@ -475,83 +475,19 @@ paths:
       tags:
         - Plan
       summary: Get all Plan documents
-      description: Retrieve infinite scroll batch of sorted, filtered Plan documents
+      description: Retrieve all Plan documents, sorted alphabetically by name. No search, pagination, or infinite scroll.
       operationId: getPlans
       security:
         - bearerAuth: []
-      parameters:
-        - name: name
-          in: query
-          required: false
-          description: Optional name filter (supports partial matches, case-insensitive)
-          schema:
-            type: string
-            example: my-Plan
-        - name: after_id
-          in: query
-          required: false
-          description: Cursor for infinite scroll (ID of last item from previous batch, omit for first request)
-          schema:
-            type: string
-            pattern: '^[0-9a-fA-F]{24}$'
-            example: 507f1f77bcf86cd799439011
-        - name: limit
-          in: query
-          required: false
-          description: Items per page (max 100)
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-            default: 10
-            example: 10
-        - name: sort_by
-          in: query
-          required: false
-          description: Field to sort by (name, description, status, created.at_time, saved.at_time)
-          schema:
-            type: string
-            default: name
-            example: name
-        - name: order
-          in: query
-          required: false
-          description: Sort order
-          schema:
-            type: string
-            enum: [asc, desc]
-            default: asc
-            example: asc
       responses:
         '200':
-          description: Successfully retrieved matching documents
+          description: All Plan documents, sorted by name
           content:
             application/json:
               schema:
-                type: object
-                required:
-                  - items
-                  - limit
-                  - has_more
-                  - next_cursor
-                properties:
-                  items:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/Plan'
-                  limit:
-                    type: integer
-                    example: 10
-                  has_more:
-                    type: boolean
-                    example: true
-                  next_cursor:
-                    type: string
-                    nullable: true
-                    pattern: '^[0-9a-fA-F]{24}$'
-                    example: 507f1f77bcf86cd799439011
-        '400':
-          $ref: '#/components/responses/BadRequest'
+                type: array
+                items:
+                  $ref: '#/components/schemas/Plan'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '500':
@@ -1662,9 +1598,9 @@ components:
             - active
             - archived
           example: active
-        steps:
+        checklist:
           type: array
-          description: The ordered list of things a mentor wants to do during an encounter. Stored in MongoDB as `checklist`.
+          description: A list of things a mentor might want to do during an encounter.
           items:
             type: string
             pattern: '^[^\t\n]{1,255}$'
@@ -1695,9 +1631,9 @@ components:
             - active
             - archived
           example: active
-        steps:
+        checklist:
           type: array
-          description: The ordered list of things a mentor wants to do during an encounter. Stored in MongoDB as `checklist`.
+          description: A list of things a mentor might want to do during an encounter.
           items:
             type: string
             pattern: '^[^\t\n]{1,255}$'
@@ -1721,9 +1657,9 @@ components:
           enum:
             - active
             - archived
-        steps:
+        checklist:
           type: array
-          description: The ordered list of things a mentor wants to do during an encounter. Stored in MongoDB as `checklist`.
+          description: A list of things a mentor might want to do during an encounter.
           items:
             type: string
             pattern: '^[^\t\n]{1,255}$'

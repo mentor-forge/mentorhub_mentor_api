@@ -46,33 +46,16 @@ def test_create_plan_endpoint():
 
 @pytest.mark.e2e
 def test_get_plans_endpoint():
-    """Test GET /api/plan endpoint."""
+    """Test GET /api/plan endpoint returns all plans, sorted by name."""
     token = get_auth_token()
     headers = {"Authorization": f"Bearer {token}"}
     response = requests.get(f"{BASE_URL}/api/plan", headers=headers)
     assert response.status_code == 200, _err(response, 200)
 
     response_data = response.json()
-    assert isinstance(response_data, dict), "Response should be a dict (infinite scroll format)"
-    assert "items" in response_data, "Response should have 'items' key"
-    assert "limit" in response_data, "Response should have 'limit' key"
-    assert "has_more" in response_data, "Response should have 'has_more' key"
-    assert "next_cursor" in response_data, "Response should have 'next_cursor' key"
-    assert isinstance(response_data["items"], list), "Items should be a list"
-
-
-@pytest.mark.e2e
-def test_get_plans_with_name_filter():
-    """Test GET /api/plan with name query parameter."""
-    token = get_auth_token()
-    headers = {"Authorization": f"Bearer {token}"}
-    response = requests.get(f"{BASE_URL}/api/plan?name=e2e", headers=headers)
-    assert response.status_code == 200, _err(response, 200)
-
-    response_data = response.json()
-    assert isinstance(response_data, dict), "Response should be a dict (infinite scroll format)"
-    assert "items" in response_data, "Response should have 'items' key"
-    assert isinstance(response_data["items"], list), "Items should be a list"
+    assert isinstance(response_data, list), "Response should be a list of plans"
+    names = [plan.get("name") for plan in response_data if "name" in plan]
+    assert names == sorted(names), "Plans should be sorted by name (ascending)"
 
 
 @pytest.mark.e2e

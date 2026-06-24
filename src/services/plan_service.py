@@ -6,32 +6,14 @@ Handles RBAC checks and MongoDB operations for Plan domain.
 
 from api_utils import MongoIO, Config
 from api_utils.flask_utils.exceptions import (
-    HTTPBadRequest,
     HTTPForbidden,
     HTTPNotFound,
     HTTPInternalServerError,
 )
-from api_utils.mongo_utils import execute_infinite_scroll_query
+from pymongo import ASCENDING
 import logging
 
 logger = logging.getLogger(__name__)
-
-# Allowed sort fields for Plan domain
-ALLOWED_SORT_FIELDS = [
-    "name",
-    "description",
-    "status",
-    "created.at_time",
-    "saved.at_time",
-]
-
-# The Plan list field is exposed in the API as `steps` but stored in MongoDB as
-# `checklist` (the data dictionary uses `checklist` with additionalProperties:false,
-# so a literal `steps` key would fail schema validation on write).
-API_LIST_FIELD = "steps"
-STORAGE_LIST_FIELD = "checklist"
-MAX_STEPS = 100
-MAX_STEP_LENGTH = 255
 
 
 class PlanService:
@@ -75,76 +57,6 @@ class PlanService:
         pass
 
     @staticmethod
-    def _validate_steps(steps):
-        """
-        Validate the API `steps` value.
-
-        Args:
-            steps: The value supplied under the API `steps` key.
-
-        Raises:
-            HTTPBadRequest: If steps is not a list of non-empty single-line
-                strings within length/count limits.
-        """
-        if not isinstance(steps, list):
-            raise HTTPBadRequest("steps must be a list")
-        if len(steps) > MAX_STEPS:
-            raise HTTPBadRequest(f"steps cannot contain more than {MAX_STEPS} items")
-        for index, item in enumerate(steps):
-            if not isinstance(item, str):
-                raise HTTPBadRequest(f"steps[{index}] must be a string")
-            if not item.strip():
-                raise HTTPBadRequest(f"steps[{index}] must not be empty")
-            if len(item) > MAX_STEP_LENGTH:
-                raise HTTPBadRequest(
-                    f"steps[{index}] must be at most {MAX_STEP_LENGTH} characters"
-                )
-            if "\t" in item or "\n" in item:
-                raise HTTPBadRequest(
-                    f"steps[{index}] must not contain tab or newline characters"
-                )
-
-    @staticmethod
-    def _map_steps_to_storage(data):
-        """
-        Translate an inbound API payload (`steps`) into storage form (`checklist`).
-
-        Returns a shallow copy so the caller's dict is not mutated. Validates
-        `steps` when present and never leaves a top-level `steps` key (which
-        would fail MongoDB schema validation).
-
-        Args:
-            data: Inbound request data (may contain `steps`).
-
-        Returns:
-            dict: A copy with `steps` renamed to `checklist` when present.
-        """
-        result = dict(data)
-        if API_LIST_FIELD in result:
-            steps = result.pop(API_LIST_FIELD)
-            PlanService._validate_steps(steps)
-            result[STORAGE_LIST_FIELD] = steps
-        return result
-
-    @staticmethod
-    def _map_checklist_to_api(document):
-        """
-        Translate a stored document (`checklist`) into API form (`steps`).
-
-        Args:
-            document: A plan document from MongoDB (or None).
-
-        Returns:
-            The document with `checklist` renamed to `steps`, or the input
-            unchanged when it is falsy or has no `checklist`.
-        """
-        if not document or STORAGE_LIST_FIELD not in document:
-            return document
-        result = dict(document)
-        result[API_LIST_FIELD] = result.pop(STORAGE_LIST_FIELD)
-        return result
-
-    @staticmethod
     def _validate_update_data(data):
         """
         Validate update data to prevent security issues.
@@ -177,9 +89,6 @@ class PlanService:
         try:
             PlanService._check_permission(token, "create")
 
-            # Translate API `steps` -> storage `checklist` (validates steps)
-            data = PlanService._map_steps_to_storage(data)
-
             # Remove _id if present (MongoDB will generate it)
             if "_id" in data:
                 del data["_id"]
@@ -195,7 +104,7 @@ class PlanService:
             plan_id = mongo.create_document(config.PLAN_COLLECTION_NAME, data)
             logger.info(f"Created plan { plan_id} for user {token.get('user_id')}")
             return plan_id
-        except (HTTPForbidden, HTTPBadRequest):
+        except HTTPForbidden:
             raise
         except Exception as e:
             error_msg = str(e)
@@ -203,63 +112,31 @@ class PlanService:
             raise HTTPInternalServerError(f"Failed to create plan: {error_msg}")
 
     @staticmethod
-    def get_plans(
-        token,
-        breadcrumb,
-        name=None,
-        after_id=None,
-        limit=10,
-        sort_by="name",
-        order="asc",
-    ):
+    def get_plans(token, breadcrumb):
         """
-        Get infinite scroll batch of sorted, filtered plan documents.
+        Retrieve all plan documents, sorted alphabetically by name.
+
+        The Plan list is small and unbounded by design: it returns every plan,
+        sorted by name ascending, with no search, pagination, or infinite
+        scroll.
 
         Args:
             token: Authentication token
             breadcrumb: Audit breadcrumb
-            name: Optional name filter (simple search)
-            after_id: Cursor (ID of last item from previous batch, None for first request)
-            limit: Items per batch
-            sort_by: Field to sort by
-            order: Sort order ('asc' or 'desc')
 
         Returns:
-            dict: {
-                'items': [...],
-                'limit': int,
-                'has_more': bool,
-                'next_cursor': str|None  # ID of last item, or None if no more
-            }
-
-        Raises:
-            HTTPBadRequest: If invalid parameters provided
+            list[dict]: All plan documents, sorted by name (ascending).
         """
         try:
             PlanService._check_permission(token, "read")
             mongo = MongoIO.get_instance()
             config = Config.get_instance()
-            collection = mongo.get_collection(config.PLAN_COLLECTION_NAME)
-            result = execute_infinite_scroll_query(
-                collection,
-                name=name,
-                after_id=after_id,
-                limit=limit,
-                sort_by=sort_by,
-                order=order,
-                allowed_sort_fields=ALLOWED_SORT_FIELDS,
+            plans = mongo.get_documents(
+                config.PLAN_COLLECTION_NAME,
+                sort_by=[("name", ASCENDING)],
             )
-            # Expose the stored `checklist` as `steps` in each item
-            result["items"] = [
-                PlanService._map_checklist_to_api(item) for item in result["items"]
-            ]
-            logger.info(
-                f"Retrieved {len(result['items'])} plans (has_more={result['has_more']}) "
-                f"for user {token.get('user_id')}"
-            )
-            return result
-        except HTTPBadRequest:
-            raise
+            logger.info(f"Retrieved {len(plans)} plans for user {token.get('user_id')}")
+            return plans
         except Exception as e:
             logger.error(f"Error retrieving plans: {str(e)}")
             raise HTTPInternalServerError("Failed to retrieve plans")
@@ -290,7 +167,7 @@ class PlanService:
                 raise HTTPNotFound(f"Plan { plan_id} not found")
 
             logger.info(f"Retrieved plan { plan_id} for user {token.get('user_id')}")
-            return PlanService._map_checklist_to_api(plan)
+            return plan
         except HTTPNotFound:
             raise
         except Exception as e:
@@ -318,9 +195,6 @@ class PlanService:
             PlanService._check_permission(token, "update")
             PlanService._validate_update_data(data)
 
-            # Translate API `steps` -> storage `checklist` (validates steps)
-            data = PlanService._map_steps_to_storage(data)
-
             # Build update data with $set operator (excluding restricted fields)
             restricted_fields = ["_id", "created", "saved"]
             set_data = {k: v for k, v in data.items() if k not in restricted_fields}
@@ -339,8 +213,8 @@ class PlanService:
                 raise HTTPNotFound(f"Plan { plan_id} not found")
 
             logger.info(f"Updated plan { plan_id} for user {token.get('user_id')}")
-            return PlanService._map_checklist_to_api(updated)
-        except (HTTPForbidden, HTTPNotFound, HTTPBadRequest):
+            return updated
+        except (HTTPForbidden, HTTPNotFound):
             raise
         except Exception as e:
             logger.error(f"Error updating plan { plan_id}: {str(e)}")
