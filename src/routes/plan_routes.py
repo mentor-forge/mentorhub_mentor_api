@@ -57,47 +57,18 @@ def create_plan_routes():
     @handle_route_exceptions
     def get_plans():
         """
-        GET /api/plan - Retrieve infinite scroll batch of sorted, filtered plan documents.
+        GET /api/plan - Retrieve all plan documents, sorted alphabetically by name.
         
-        Query Parameters:
-            name: Optional name filter
-            after_id: Cursor for infinite scroll (ID of last item from previous batch, omit for first request)
-            limit: Items per batch (default: 10, max: 100)
-            sort_by: Field to sort by (default: 'name')
-            order: Sort order 'asc' or 'desc' (default: 'asc')
+        No query parameters: the list always returns every plan, sorted by
+        name ascending (no search, pagination, or infinite scroll).
         
         Returns:
-            JSON response with infinite scroll results: {
-                'items': [...],
-                'limit': int,
-                'has_more': bool,
-                'next_cursor': str|None
-            }
-        
-        Raises:
-            400 Bad Request: If invalid parameters provided
+            JSON array of plan documents
         """
         token = create_flask_token()
         breadcrumb = create_flask_breadcrumb(token)
         
-        # Get query parameters
-        name = request.args.get('name')
-        after_id = request.args.get('after_id')
-        limit = request.args.get('limit', 10, type=int)
-        sort_by = request.args.get('sort_by', 'name')
-        order = request.args.get('order', 'asc')
-        
-        # Service layer validates parameters and raises HTTPBadRequest if invalid
-        # @handle_route_exceptions decorator will catch and format the exception
-        result = PlanService.get_plans(
-            token, 
-            breadcrumb, 
-            name=name,
-            after_id=after_id,
-            limit=limit,
-            sort_by=sort_by,
-            order=order
-        )
+        result = PlanService.get_plans(token, breadcrumb)
         
         logger.info(f"get_plans Success {str(breadcrumb['at_time'])}, {breadcrumb['correlation_id']}")
         return jsonify(result), 200
