@@ -5,13 +5,19 @@ Handles RBAC checks and MongoDB operations for Event domain.
 """
 from api_utils import MongoIO, Config
 from api_utils.flask_utils.exceptions import HTTPBadRequest, HTTPForbidden, HTTPNotFound, HTTPInternalServerError
-from api_utils.mongo_utils import execute_infinite_scroll_query
+from api_utils.mongo_utils import execute_infinite_scroll_query, encode_document
 import logging
 
 logger = logging.getLogger(__name__)
 
 # Allowed sort fields for Event domain
 ALLOWED_SORT_FIELDS = ['type', 'created.at_time']
+
+# Identifier fields stored as BSON ObjectId per the Event dictionary
+# (the schema validator rejects string ids). encode_document recurses into
+# nested objects, so this also covers context.profile_id.
+ID_PROPERTIES = ['_id', 'profile_id']
+DATE_PROPERTIES = []
 
 
 class EventService:
@@ -69,6 +75,10 @@ class EventService:
             # Remove _id if present (MongoDB will generate it)
             if '_id' in data:
                 del data['_id']
+            
+            # Encode identifier fields (e.g. context.profile_id) to BSON ObjectId
+            # so the collection's $jsonSchema validator accepts the document.
+            encode_document(data, ID_PROPERTIES, DATE_PROPERTIES)
             
             # Automatically populate required field: created
             # This is system-managed and should not be provided by the client
