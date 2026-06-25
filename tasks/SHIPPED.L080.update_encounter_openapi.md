@@ -1,6 +1,6 @@
 # L080 – Update Encounter OpenAPI spec (RBAC, required create fields, agenda, remove list)
 
-**Status**: Pending  
+**Status**: Shipped  
 **Type**: Feature  
 **Depends On**: none  
 **Description**: Update `docs/openapi.yaml` **first** (design specification, ahead of code) to reflect the new Encounter contract: `POST /api/encounter` requires `mentor_id`, `mentee_id`, and `plan_id` and auto-fills the `agenda` from the referenced Plan's `checklist`; `GET /api/encounter/{EncounterId}` is readable by any `mentor` or `admin`; `PATCH /api/encounter/{EncounterId}` is restricted to `admin` or the owning mentor (the caller's Profile `_id` equals the encounter's `mentor_id`); and the `GET /api/encounter` list endpoint is **removed** (nothing consumes it — the app lists encounters via Get Profile). This is the contract-only task; service/route/test changes land in L090–L110.
@@ -52,4 +52,53 @@ The agent must not update files outside this list.
 
 ## Execution Notes
 
-_Reserved for the task execution agent._
+### Summary of changes (`docs/openapi.yaml`)
+
+- **POST `/api/encounter`**: rewrote the operation `description` to state that
+  `mentor_id`, `mentee_id`, and `plan_id` are required and that the server
+  auto-fills `agenda` from the referenced Plan's `checklist` (client must not
+  send `agenda`). Added `400` (`BadRequest`) and `404` (`NotFound`, referenced
+  Plan not found) responses alongside the existing `401`/`403`/`500`. The role
+  wording was updated from "staff or admin" to "mentor or admin".
+- **Removed GET list**: deleted the `get` operation (infinite-scroll list,
+  `operationId: getEncounters`) under the `/api/encounter` path item. The `post`
+  operation is retained. No response components were orphaned by the removal —
+  the deleted operation only used shared `$ref`s (`BadRequest`, `Unauthorized`,
+  `InternalError`) that remain in use elsewhere, so none were removed. (The
+  pre-existing unused `InfiniteScrollResponse` schema was never wired to this
+  operation and was left untouched.)
+- **`Encounter` response schema**: added an `agenda` array property; each item
+  is an object with `checked` (boolean) and `step` (string, sentence pattern
+  `^[^\t\n]{1,255}$`), matching the Encounter dictionary.
+- **`EncounterUpdate`**: added the same `agenda` array so checklist items can be
+  checked off via PATCH.
+- **`EncounterInput`**: added `required: [mentor_id, mentee_id, plan_id]` and
+  clarified the description; `agenda` is intentionally **not** present (server-
+  populated).
+- **GET `/api/encounter/{EncounterId}`**: description now states read is open —
+  any `mentor` or `admin` may read any encounter (no ownership check, no `403`).
+- **PATCH `/api/encounter/{EncounterId}`**: description now states the caller
+  must be `admin` **or** the owning mentor (caller's Profile `_id` equals the
+  encounter's `mentor_id`); `403` and `404` responses retained.
+
+### Test / validation results
+
+- **OpenAPI validation** (temporary PyYAML + `$ref`-walking script, since
+  removed): PASS — document parses as valid YAML; no dangling `$ref`s;
+  `/api/encounter` has a `post` and no `get`; `EncounterInput.required` includes
+  `mentor_id`/`mentee_id`/`plan_id`; `Encounter` and `EncounterUpdate` expose
+  `agenda`; `EncounterInput` does not; POST exposes `400`/`401`/`403`/`404`/`500`.
+- **`pipenv run build`**: PASS (sources compile).
+- **`pipenv run lint`** (`black --check`): FAIL, but **pre-existing and
+  unrelated** — black flags 29 Python files, none of which were touched by this
+  task (`git status` shows only `docs/openapi.yaml` modified). OpenAPI is YAML
+  and is not affected by black, so this introduces no regression.
+
+### Deferrals / follow-ups
+
+- **Packaging verification** (`pipenv run container` / `pipenv run api` / curl
+  `/docs/openapi.yaml`) was **deferred** — container infra was not exercised in
+  this contract-only task. Optional per the task.
+- The pre-existing repo-wide `black` formatting failures are out of scope for
+  this task (Outputs are limited to `docs/openapi.yaml`); they should be
+  addressed separately.
