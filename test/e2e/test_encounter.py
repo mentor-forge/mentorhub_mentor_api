@@ -145,44 +145,18 @@ def test_create_encounter_missing_required_field():
 
 
 @pytest.mark.e2e
-def test_get_encounters_endpoint():
-    """Test GET /api/encounter endpoint."""
+def test_get_encounter_list_endpoint_removed():
+    """GET /api/encounter (list) no longer exists; expect 404/405, never 200."""
     token = get_auth_token()
     headers = {"Authorization": f"Bearer {token}"}
     response = requests.get(f"{BASE_URL}/api/encounter", headers=headers)
-    assert response.status_code == 200, _err(response, 200)
-
-    response_data = response.json()
-    assert isinstance(
-        response_data, dict
-    ), "Response should be a dict (infinite scroll format)"
-    assert "items" in response_data, "Response should have 'items' key"
-    assert "limit" in response_data, "Response should have 'limit' key"
-    assert "has_more" in response_data, "Response should have 'has_more' key"
-    assert "next_cursor" in response_data, "Response should have 'next_cursor' key"
-    assert isinstance(response_data["items"], list), "Items should be a list"
-
-
-@pytest.mark.e2e
-def test_get_encounters_with_name_filter():
-    """Test GET /api/encounter with name query parameter."""
-    token = get_auth_token()
-    headers = {"Authorization": f"Bearer {token}"}
-    response = requests.get(f"{BASE_URL}/api/encounter?name=e2e", headers=headers)
-    assert response.status_code == 200, _err(response, 200)
-
-    response_data = response.json()
-    assert isinstance(
-        response_data, dict
-    ), "Response should be a dict (infinite scroll format)"
-    assert "items" in response_data, "Response should have 'items' key"
-    assert isinstance(response_data["items"], list), "Items should be a list"
+    assert response.status_code in (404, 405), _err(response, "404 or 405")
 
 
 @pytest.mark.e2e
 def test_encounter_endpoints_require_auth():
     """Test that encounter endpoints require authentication."""
-    response = requests.get(f"{BASE_URL}/api/encounter")
+    response = requests.get(f"{BASE_URL}/api/encounter/507f1f77bcf86cd799439011")
     assert response.status_code == 401, f"Expected 401, got {response.status_code}"
 
 

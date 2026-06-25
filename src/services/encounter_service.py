@@ -11,7 +11,6 @@ from api_utils.flask_utils.exceptions import (
     HTTPNotFound,
     HTTPInternalServerError,
 )
-from api_utils.mongo_utils import execute_infinite_scroll_query
 from bson import ObjectId
 from bson.errors import InvalidId
 from pymongo import DESCENDING
@@ -19,15 +18,6 @@ from src.services.plan_service import PlanService
 import logging
 
 logger = logging.getLogger(__name__)
-
-# Allowed sort fields for Encounter domain
-ALLOWED_SORT_FIELDS = [
-    "name",
-    "description",
-    "status",
-    "created.at_time",
-    "saved.at_time",
-]
 
 
 class EncounterService:
@@ -213,64 +203,6 @@ class EncounterService:
             error_msg = str(e)
             logger.error(f"Error creating encounter: {error_msg}")
             raise HTTPInternalServerError(f"Failed to create encounter: {error_msg}")
-
-    @staticmethod
-    def get_encounters(
-        token,
-        breadcrumb,
-        name=None,
-        after_id=None,
-        limit=10,
-        sort_by="name",
-        order="asc",
-    ):
-        """
-        Get infinite scroll batch of sorted, filtered encounter documents.
-
-        Args:
-            token: Authentication token
-            breadcrumb: Audit breadcrumb
-            name: Optional name filter (simple search)
-            after_id: Cursor (ID of last item from previous batch, None for first request)
-            limit: Items per batch
-            sort_by: Field to sort by
-            order: Sort order ('asc' or 'desc')
-
-        Returns:
-            dict: {
-                'items': [...],
-                'limit': int,
-                'has_more': bool,
-                'next_cursor': str|None  # ID of last item, or None if no more
-            }
-
-        Raises:
-            HTTPBadRequest: If invalid parameters provided
-        """
-        try:
-            EncounterService._check_permission(token, "read")
-            mongo = MongoIO.get_instance()
-            config = Config.get_instance()
-            collection = mongo.get_collection(config.ENCOUNTER_COLLECTION_NAME)
-            result = execute_infinite_scroll_query(
-                collection,
-                name=name,
-                after_id=after_id,
-                limit=limit,
-                sort_by=sort_by,
-                order=order,
-                allowed_sort_fields=ALLOWED_SORT_FIELDS,
-            )
-            logger.info(
-                f"Retrieved {len(result['items'])} encounters (has_more={result['has_more']}) "
-                f"for user {token.get('user_id')}"
-            )
-            return result
-        except HTTPBadRequest:
-            raise
-        except Exception as e:
-            logger.error(f"Error retrieving encounters: {str(e)}")
-            raise HTTPInternalServerError("Failed to retrieve encounters")
 
     @staticmethod
     def _normalize_mentee_id(mentee_id):
