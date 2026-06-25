@@ -1,6 +1,6 @@
 # L100 – Encounter RBAC: open read for mentor/admin, owner-or-admin PATCH
 
-**Status**: Pending  
+**Status**: Shipped  
 **Type**: Feature  
 **Depends On**: L080  
 **Description**: Implement RBAC for the Encounter read and update endpoints. `GET /api/encounter/{EncounterId}` is readable by any caller with the `mentor` or `admin` role (any mentor can read any encounter). `PATCH /api/encounter/{EncounterId}` is allowed only for `admin`, or for the mentor who **owns** the encounter — i.e. the caller's Profile `_id` equals the encounter's `mentor_id`. Replace the placeholder `_check_permission` in `EncounterService` with these real checks.
@@ -53,4 +53,69 @@ The agent must not update files outside this list.
 
 ## Execution Notes
 
-_Reserved for the task execution agent._
+### Approach
+
+Replaced the placeholder `EncounterService._check_permission` with real RBAC and
+added an owner-or-admin gate for `update_encounter`:
+
+- `_check_permission(token, operation)` now authorizes any caller whose roles
+  include `Config.get_instance().ROLE_MENTOR` or `.ROLE_ADMIN` (using the
+  instance attributes, matching `profile_service.py`/`mentee_service.py`/
+  `journey_service.py`); all others get `HTTPForbidden` (403). This is the base
+  check for read (`get_encounter`, plus the other read paths) and create.
+- **Read** (`get_encounter`): mentor or admin may read **any** encounter (no
+  ownership check). Added `HTTPForbidden` to the re-raise tuple so a denied read
+  surfaces as 403 rather than being wrapped to 500.
+- **Update** (`update_encounter`): now loads the target encounter via
+  `mongo.get_document` **first** (missing → `HTTPNotFound` 404), then authorizes:
+  `admin` unconditionally; otherwise the caller must be a `mentor` **and** own
+  the encounter. Ownership is checked in `_check_owner`, which resolves the
+  caller's Profile id via `_resolve_caller_profile_id` (Profile whose
+  `name == token["user_id"]`) and compares `str(profile._id) == str(mentor_id)`
+  (string compare avoids `ObjectId`-vs-`str` mismatch). Non-owner mentors and
+  other roles → `HTTPForbidden` (403). `_validate_update_data` restrictions
+  (`_id`, `created`, `saved`) and the `saved`-breadcrumb behavior are unchanged;
+  the re-raise tuple keeps `(HTTPForbidden, HTTPNotFound)` so both propagate
+  instead of becoming 500.
+
+Note on ownership resolution: the task suggested resolving the caller Profile
+"via `ProfileService` (or an equivalent shared helper)". `ProfileService`
+exposes no caller-profile helper and `profile_service.py` is not in this task's
+Outputs, so `_resolve_caller_profile_id` reads the caller's own Profile by
+`name` directly via `MongoIO` — mirroring the exact identity-resolution pattern
+already used in `ProfileService.get_profiles`. The cross-collection read is
+limited to the caller's own Profile; the encounter is loaded within the service
+as before.
+
+### Tests
+
+- `test/services/test_encounter_service.py`: introduced a `_make_config()` helper
+  exposing `ENCOUNTER_COLLECTION_NAME`, `PROFILE_COLLECTION_NAME`, `ROLE_MENTOR`,
+  `ROLE_ADMIN` (existing config mocks switched to it). Added RBAC cases:
+  `get_encounter` allowed for mentor / allowed for admin / denied (403) for other
+  role; `update_encounter` allowed for admin, allowed for owning mentor (Profile
+  `_id == mentor_id`, with a deliberate `str` vs `ObjectId` mismatch to prove the
+  string compare), denied (403) for non-owning mentor, denied (403) for other
+  role, and 404 when the encounter is missing.
+- `test/routes/test_encounter_routes.py`: added GET-by-id 403 and PATCH
+  200/403/404 route assertions.
+- `test/e2e/test_encounter.py`: added (`@pytest.mark.e2e`) owner/admin-allowed
+  PATCH (200) and non-owner-mentor-denied PATCH (403) cases, plus a mentor-only
+  token minter and an encounter-creation helper.
+
+### Results (run from API repo root)
+
+- `pipenv run test` → **204 passed, 31 deselected** (e2e). 
+- `pipenv run lint` (`black --check`) → the four edited files are black-clean
+  (`black` was run on them). 27 unrelated, pre-existing files still fail the repo
+  lint and were intentionally left untouched.
+- `pipenv run build` → exit 0 (success).
+
+### Deferrals / follow-ups
+
+- E2E (`pipenv run db`/`dev`/`e2e`) not executed here — infra not available in
+  this environment. New e2e cases are marked `@pytest.mark.e2e` and are deferred;
+  the owner-allowed e2e exercises the admin path (the default persona token
+  carries `admin`+`mentor`), and the non-owner case uses a mentor-only token.
+- Repo-wide `black` lint debt (27 pre-existing files) is out of scope for this
+  task and left for a dedicated formatting cleanup.

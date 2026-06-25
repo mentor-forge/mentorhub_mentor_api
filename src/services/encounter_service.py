@@ -35,7 +35,7 @@ class EncounterService:
     Service class for Encounter domain operations.
 
     Handles:
-    - RBAC authorization checks (placeholder for future implementation)
+    - RBAC authorization checks (mentor/admin read; owner-or-admin update)
     - MongoDB operations via MongoIO singleton
     - Business logic for Encounter domain
     """
@@ -43,32 +43,79 @@ class EncounterService:
     @staticmethod
     def _check_permission(token, operation):
         """
-        Check if the user has permission to perform an operation.
+        Authorize an operation for the Encounter domain.
+
+        Users granted either the ``mentor`` or ``admin`` role (per the shared
+        ``Config`` role constants) may access encounter data through this
+        service. Ownership-sensitive operations (the owner-or-admin ``PATCH``)
+        layer an additional check on top of this base authorization via
+        :meth:`_check_owner`.
 
         Args:
             token: Token dictionary with user_id and roles
-            operation: The operation being performed (e.g., 'read', 'create', 'update')
+            operation: The operation being performed (e.g., 'read', 'create',
+                'update')
 
         Raises:
-            HTTPForbidden: If user doesn't have required permission
-
-        Note: This is a placeholder for future RBAC implementation.
-        For now, all operations require a valid token (authentication only).
-
-        Example RBAC implementation:
-            if operation == 'update':
-                # Update requires admin role
-                if 'admin' not in token.get('roles', []):
-                    raise HTTPForbidden("Admin role required to update encounter documents")
-            elif operation == 'create':
-                # Create requires staff or admin role
-                if not any(role in token.get('roles', []) for role in ['staff', 'admin']):
-                    raise HTTPForbidden("Staff or admin role required to create encounter documents")
-            elif operation == 'read':
-                # Read requires any authenticated user (no additional check needed)
-                pass
+            HTTPForbidden: If the caller holds neither the ``mentor`` nor the
+                ``admin`` role
         """
-        pass
+        config = Config.get_instance()
+        allowed_roles = {config.ROLE_MENTOR, config.ROLE_ADMIN}
+        roles = token.get("roles", []) or []
+        if not allowed_roles.intersection(roles):
+            raise HTTPForbidden(
+                "Mentor or admin role required to access encounter data"
+            )
+
+    @staticmethod
+    def _resolve_caller_profile_id(token):
+        """
+        Resolve the caller's Profile ``_id`` from the JWT identity.
+
+        Following the domain convention (see ``ProfileService``), the caller's
+        Profile is the one whose ``name`` matches the token's ``user_id``. The
+        Profile ``_id`` is the mentor id used across the domain (e.g. stored as
+        ``Encounter.mentor_id``).
+
+        Args:
+            token: Token dictionary with ``user_id`` and roles
+
+        Returns:
+            The caller's Profile ``_id``, or ``None`` if no Profile matches.
+        """
+        mongo = MongoIO.get_instance()
+        config = Config.get_instance()
+        profiles = mongo.get_documents(
+            config.PROFILE_COLLECTION_NAME,
+            match={"name": token.get("user_id")},
+        )
+        if not profiles:
+            return None
+        return profiles[0].get("_id")
+
+    @staticmethod
+    def _check_owner(token, encounter):
+        """
+        Authorize the owning mentor for an ownership-sensitive operation.
+
+        The caller owns the encounter when their resolved Profile ``_id`` equals
+        the encounter's ``mentor_id``. Ids are compared as strings to avoid
+        ``ObjectId`` vs ``str`` mismatches.
+
+        Args:
+            token: Token dictionary with ``user_id`` and roles
+            encounter: The target encounter document (already loaded)
+
+        Raises:
+            HTTPForbidden: If the caller is not the owning mentor
+        """
+        caller_profile_id = EncounterService._resolve_caller_profile_id(token)
+        mentor_id = encounter.get("mentor_id")
+        if caller_profile_id is None or str(caller_profile_id) != str(mentor_id):
+            raise HTTPForbidden(
+                "Only the owning mentor or an admin may update this encounter"
+            )
 
     @staticmethod
     def _validate_update_data(data):
@@ -345,7 +392,7 @@ class EncounterService:
                 f"Retrieved encounter { encounter_id} for user {token.get('user_id')}"
             )
             return encounter
-        except HTTPNotFound:
+        except (HTTPForbidden, HTTPNotFound):
             raise
         except Exception as e:
             logger.error(f"Error retrieving encounter { encounter_id}: {str(e)}")
@@ -368,10 +415,28 @@ class EncounterService:
             dict: The updated encounter document
 
         Raises:
+            HTTPForbidden: If the caller is not an admin or the owning mentor
             HTTPNotFound: If encounter is not found
         """
         try:
             EncounterService._check_permission(token, "update")
+
+            mongo = MongoIO.get_instance()
+            config = Config.get_instance()
+
+            # Load the target encounter first so a missing document yields 404
+            # before the ownership check (and to read its mentor_id).
+            encounter = mongo.get_document(
+                config.ENCOUNTER_COLLECTION_NAME, encounter_id
+            )
+            if encounter is None:
+                raise HTTPNotFound(f"Encounter { encounter_id} not found")
+
+            # Admins may update any encounter; other mentors must own it.
+            roles = token.get("roles", []) or []
+            if config.ROLE_ADMIN not in roles:
+                EncounterService._check_owner(token, encounter)
+
             EncounterService._validate_update_data(data)
 
             # Build update data with $set operator (excluding restricted fields)
@@ -382,8 +447,6 @@ class EncounterService:
             # Use breadcrumb directly as it already has the correct structure
             set_data["saved"] = breadcrumb
 
-            mongo = MongoIO.get_instance()
-            config = Config.get_instance()
             updated = mongo.update_document(
                 config.ENCOUNTER_COLLECTION_NAME,
                 document_id=encounter_id,

@@ -227,6 +227,114 @@ class TestEncounterRoutes(unittest.TestCase):
         self.assertEqual(response.json["error"], "Encounter 999 not found")
 
     @patch("src.routes.encounter_routes.create_flask_token")
+    @patch("src.routes.encounter_routes.create_flask_breadcrumb")
+    @patch("src.routes.encounter_routes.EncounterService.get_encounter")
+    def test_get_encounter_forbidden(
+        self,
+        mock_get_encounter,
+        mock_create_breadcrumb,
+        mock_create_token,
+    ):
+        """GET /api/encounter/<id> returns 403 when the service denies access."""
+        from api_utils.flask_utils.exceptions import HTTPForbidden
+
+        mock_create_token.return_value = self.mock_token
+        mock_create_breadcrumb.return_value = self.mock_breadcrumb
+
+        mock_get_encounter.side_effect = HTTPForbidden(
+            "Mentor or admin role required to access encounter data"
+        )
+
+        response = self.client.get("/api/encounter/123")
+
+        self.assertEqual(response.status_code, 403)
+        self.assertIn("error", response.json)
+
+    @patch("src.routes.encounter_routes.create_flask_token")
+    @patch("src.routes.encounter_routes.create_flask_breadcrumb")
+    @patch("src.routes.encounter_routes.EncounterService.update_encounter")
+    def test_update_encounter_success(
+        self,
+        mock_update_encounter,
+        mock_create_breadcrumb,
+        mock_create_token,
+    ):
+        """PATCH /api/encounter/<id> returns 200 with the updated document."""
+        mock_create_token.return_value = self.mock_token
+        mock_create_breadcrumb.return_value = self.mock_breadcrumb
+
+        mock_update_encounter.return_value = {
+            "_id": "123",
+            "name": "updated-encounter",
+        }
+
+        response = self.client.patch(
+            "/api/encounter/123",
+            json={"name": "updated-encounter"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json["name"], "updated-encounter")
+        mock_update_encounter.assert_called_once_with(
+            "123",
+            {"name": "updated-encounter"},
+            self.mock_token,
+            self.mock_breadcrumb,
+        )
+
+    @patch("src.routes.encounter_routes.create_flask_token")
+    @patch("src.routes.encounter_routes.create_flask_breadcrumb")
+    @patch("src.routes.encounter_routes.EncounterService.update_encounter")
+    def test_update_encounter_forbidden(
+        self,
+        mock_update_encounter,
+        mock_create_breadcrumb,
+        mock_create_token,
+    ):
+        """PATCH /api/encounter/<id> returns 403 for a non-owner / wrong role."""
+        from api_utils.flask_utils.exceptions import HTTPForbidden
+
+        mock_create_token.return_value = self.mock_token
+        mock_create_breadcrumb.return_value = self.mock_breadcrumb
+
+        mock_update_encounter.side_effect = HTTPForbidden(
+            "Only the owning mentor or an admin may update this encounter"
+        )
+
+        response = self.client.patch(
+            "/api/encounter/123",
+            json={"name": "updated-encounter"},
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertIn("error", response.json)
+
+    @patch("src.routes.encounter_routes.create_flask_token")
+    @patch("src.routes.encounter_routes.create_flask_breadcrumb")
+    @patch("src.routes.encounter_routes.EncounterService.update_encounter")
+    def test_update_encounter_not_found(
+        self,
+        mock_update_encounter,
+        mock_create_breadcrumb,
+        mock_create_token,
+    ):
+        """PATCH /api/encounter/<id> returns 404 when the encounter is missing."""
+        from api_utils.flask_utils.exceptions import HTTPNotFound
+
+        mock_create_token.return_value = self.mock_token
+        mock_create_breadcrumb.return_value = self.mock_breadcrumb
+
+        mock_update_encounter.side_effect = HTTPNotFound("Encounter 999 not found")
+
+        response = self.client.patch(
+            "/api/encounter/999",
+            json={"name": "updated-encounter"},
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.json["error"], "Encounter 999 not found")
+
+    @patch("src.routes.encounter_routes.create_flask_token")
     def test_create_encounter_unauthorized(self, mock_create_token):
         """Test POST /api/encounter when token is invalid."""
         from api_utils.flask_utils.exceptions import HTTPUnauthorized
