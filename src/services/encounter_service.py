@@ -15,6 +15,7 @@ from api_utils.mongo_utils import execute_infinite_scroll_query
 from bson import ObjectId
 from bson.errors import InvalidId
 from pymongo import DESCENDING
+from src.services.plan_service import PlanService
 import logging
 
 logger = logging.getLogger(__name__)
@@ -87,9 +88,33 @@ class EncounterService:
                 raise HTTPForbidden(f"Cannot update {field} field")
 
     @staticmethod
+    def _build_agenda_from_plan(plan):
+        """
+        Derive the encounter ``agenda`` from a Plan's checklist.
+
+        ``PlanService`` exposes the Plan list as ``steps`` (stored as
+        ``checklist``); each entry becomes an agenda item
+        ``{"step": <entry>, "checked": False}``. An empty or absent list
+        yields ``[]``.
+        """
+        steps = plan.get("steps")
+        if steps is None:
+            steps = plan.get("checklist")
+        if not steps:
+            return []
+        return [{"step": step, "checked": False} for step in steps]
+
+    @staticmethod
     def create_encounter(data, token, breadcrumb):
         """
         Create a new encounter document.
+
+        The request must include ``mentor_id``, ``mentee_id``, and ``plan_id``,
+        each a valid 24-hex ObjectId string; otherwise an ``HTTPBadRequest``
+        (400) is raised. The referenced Plan is fetched via ``PlanService`` and
+        its checklist is used to auto-fill the encounter ``agenda`` (any
+        client-supplied ``agenda`` is replaced). A missing Plan surfaces as
+        ``HTTPNotFound`` (404).
 
         Args:
             data: Dictionary containing encounter data
@@ -101,6 +126,22 @@ class EncounterService:
         """
         try:
             EncounterService._check_permission(token, "create")
+
+            # Required reference ids must be present and valid ObjectId strings
+            for field in ("mentor_id", "mentee_id", "plan_id"):
+                value = data.get(field)
+                if not value:
+                    raise HTTPBadRequest(f"{field} is required")
+                if not ObjectId.is_valid(value):
+                    raise HTTPBadRequest(f"{field} must be a valid ObjectId")
+
+            # Look up the referenced Plan via PlanService (no direct
+            # cross-collection access). A missing Plan raises HTTPNotFound.
+            plan = PlanService.get_plan(data["plan_id"], token, breadcrumb)
+
+            # Auto-fill agenda from the Plan checklist, overriding any
+            # client-supplied agenda.
+            data["agenda"] = EncounterService._build_agenda_from_plan(plan)
 
             # Remove _id if present (MongoDB will generate it)
             if "_id" in data:
@@ -119,7 +160,7 @@ class EncounterService:
                 f"Created encounter { encounter_id} for user {token.get('user_id')}"
             )
             return encounter_id
-        except HTTPForbidden:
+        except (HTTPForbidden, HTTPBadRequest, HTTPNotFound):
             raise
         except Exception as e:
             error_msg = str(e)

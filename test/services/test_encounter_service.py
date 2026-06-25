@@ -28,9 +28,30 @@ class TestEncounterService(unittest.TestCase):
             "correlation_id": "test-correlation-id",
         }
 
+    # Valid 24-hex ObjectId strings reused across create tests.
+    VALID_MENTOR_ID = "507f1f77bcf86cd799439011"
+    VALID_MENTEE_ID = "507f1f77bcf86cd799439012"
+    VALID_PLAN_ID = "507f1f77bcf86cd799439013"
+
+    def _valid_create_data(self, **overrides):
+        """Build a minimal valid create payload with the three required ids."""
+        data = {
+            "name": "test-encounter",
+            "description": "Test encounter",
+            "status": "active",
+            "mentor_id": self.VALID_MENTOR_ID,
+            "mentee_id": self.VALID_MENTEE_ID,
+            "plan_id": self.VALID_PLAN_ID,
+        }
+        data.update(overrides)
+        return data
+
+    @patch("src.services.encounter_service.PlanService.get_plan")
     @patch("src.services.encounter_service.Config.get_instance")
     @patch("src.services.encounter_service.MongoIO.get_instance")
-    def test_create_encounter_success(self, mock_get_mongo, mock_get_config):
+    def test_create_encounter_success(
+        self, mock_get_mongo, mock_get_config, mock_get_plan
+    ):
         """Test successful creation of a encounter document."""
         mock_config = MagicMock()
         mock_config.ENCOUNTER_COLLECTION_NAME = "Encounter"
@@ -40,11 +61,9 @@ class TestEncounterService(unittest.TestCase):
         mock_mongo.create_document.return_value = "123"
         mock_get_mongo.return_value = mock_mongo
 
-        data = {
-            "name": "test-encounter",
-            "description": "Test encounter",
-            "status": "active",
-        }
+        mock_get_plan.return_value = {"_id": self.VALID_PLAN_ID, "steps": []}
+
+        data = self._valid_create_data()
 
         encounter_id = EncounterService.create_encounter(
             data, self.mock_token, self.mock_breadcrumb
@@ -58,10 +77,139 @@ class TestEncounterService(unittest.TestCase):
         self.assertIn("created", created_data)
         self.assertIn("saved", created_data)
         self.assertEqual(created_data["name"], "test-encounter")
+        # Plan looked up via PlanService, not a direct Plan collection read.
+        mock_get_plan.assert_called_once_with(
+            self.VALID_PLAN_ID, self.mock_token, self.mock_breadcrumb
+        )
 
+    @patch("src.services.encounter_service.PlanService.get_plan")
     @patch("src.services.encounter_service.Config.get_instance")
     @patch("src.services.encounter_service.MongoIO.get_instance")
-    def test_create_encounter_removes_id(self, mock_get_mongo, mock_get_config):
+    def test_create_encounter_agenda_from_plan_checklist(
+        self, mock_get_mongo, mock_get_config, mock_get_plan
+    ):
+        """agenda is derived from the Plan checklist, overriding client agenda."""
+        mock_config = MagicMock()
+        mock_config.ENCOUNTER_COLLECTION_NAME = "Encounter"
+        mock_get_config.return_value = mock_config
+
+        mock_mongo = MagicMock()
+        mock_mongo.create_document.return_value = "123"
+        mock_get_mongo.return_value = mock_mongo
+
+        mock_get_plan.return_value = {
+            "_id": self.VALID_PLAN_ID,
+            "steps": ["review goals", "discuss blockers"],
+        }
+
+        # Client-supplied agenda must be ignored/overwritten.
+        data = self._valid_create_data(
+            agenda=[{"step": "client provided", "checked": True}]
+        )
+
+        EncounterService.create_encounter(data, self.mock_token, self.mock_breadcrumb)
+
+        created_data = mock_mongo.create_document.call_args[0][1]
+        self.assertEqual(
+            created_data["agenda"],
+            [
+                {"step": "review goals", "checked": False},
+                {"step": "discuss blockers", "checked": False},
+            ],
+        )
+
+    @patch("src.services.encounter_service.PlanService.get_plan")
+    @patch("src.services.encounter_service.Config.get_instance")
+    @patch("src.services.encounter_service.MongoIO.get_instance")
+    def test_create_encounter_empty_checklist_yields_empty_agenda(
+        self, mock_get_mongo, mock_get_config, mock_get_plan
+    ):
+        """An empty/absent Plan checklist yields agenda == []."""
+        mock_config = MagicMock()
+        mock_config.ENCOUNTER_COLLECTION_NAME = "Encounter"
+        mock_get_config.return_value = mock_config
+
+        mock_mongo = MagicMock()
+        mock_mongo.create_document.return_value = "123"
+        mock_get_mongo.return_value = mock_mongo
+
+        # Plan with no checklist/steps at all.
+        mock_get_plan.return_value = {"_id": self.VALID_PLAN_ID}
+
+        data = self._valid_create_data()
+        EncounterService.create_encounter(data, self.mock_token, self.mock_breadcrumb)
+
+        created_data = mock_mongo.create_document.call_args[0][1]
+        self.assertEqual(created_data["agenda"], [])
+
+    @patch("src.services.encounter_service.PlanService.get_plan")
+    @patch("src.services.encounter_service.Config.get_instance")
+    @patch("src.services.encounter_service.MongoIO.get_instance")
+    def test_create_encounter_missing_required_id_raises_bad_request(
+        self, mock_get_mongo, mock_get_config, mock_get_plan
+    ):
+        """Missing mentor_id/mentee_id/plan_id each raise HTTPBadRequest."""
+        mock_config = MagicMock()
+        mock_config.ENCOUNTER_COLLECTION_NAME = "Encounter"
+        mock_get_config.return_value = mock_config
+        mock_get_mongo.return_value = MagicMock()
+        mock_get_plan.return_value = {"_id": self.VALID_PLAN_ID, "steps": []}
+
+        for field in ("mentor_id", "mentee_id", "plan_id"):
+            data = self._valid_create_data()
+            del data[field]
+            with self.assertRaises(HTTPBadRequest) as context:
+                EncounterService.create_encounter(
+                    data, self.mock_token, self.mock_breadcrumb
+                )
+            self.assertIn(field, str(context.exception))
+
+    @patch("src.services.encounter_service.PlanService.get_plan")
+    @patch("src.services.encounter_service.Config.get_instance")
+    @patch("src.services.encounter_service.MongoIO.get_instance")
+    def test_create_encounter_malformed_id_raises_bad_request(
+        self, mock_get_mongo, mock_get_config, mock_get_plan
+    ):
+        """A non-ObjectId id raises HTTPBadRequest."""
+        mock_config = MagicMock()
+        mock_config.ENCOUNTER_COLLECTION_NAME = "Encounter"
+        mock_get_config.return_value = mock_config
+        mock_get_mongo.return_value = MagicMock()
+        mock_get_plan.return_value = {"_id": self.VALID_PLAN_ID, "steps": []}
+
+        data = self._valid_create_data(plan_id="not-an-object-id")
+        with self.assertRaises(HTTPBadRequest) as context:
+            EncounterService.create_encounter(
+                data, self.mock_token, self.mock_breadcrumb
+            )
+        self.assertIn("plan_id", str(context.exception))
+
+    @patch("src.services.encounter_service.PlanService.get_plan")
+    @patch("src.services.encounter_service.Config.get_instance")
+    @patch("src.services.encounter_service.MongoIO.get_instance")
+    def test_create_encounter_unknown_plan_raises_not_found(
+        self, mock_get_mongo, mock_get_config, mock_get_plan
+    ):
+        """An unknown plan_id surfaces as HTTPNotFound (404)."""
+        mock_config = MagicMock()
+        mock_config.ENCOUNTER_COLLECTION_NAME = "Encounter"
+        mock_get_config.return_value = mock_config
+        mock_get_mongo.return_value = MagicMock()
+
+        mock_get_plan.side_effect = HTTPNotFound(f"Plan {self.VALID_PLAN_ID} not found")
+
+        data = self._valid_create_data()
+        with self.assertRaises(HTTPNotFound):
+            EncounterService.create_encounter(
+                data, self.mock_token, self.mock_breadcrumb
+            )
+
+    @patch("src.services.encounter_service.PlanService.get_plan")
+    @patch("src.services.encounter_service.Config.get_instance")
+    @patch("src.services.encounter_service.MongoIO.get_instance")
+    def test_create_encounter_removes_id(
+        self, mock_get_mongo, mock_get_config, mock_get_plan
+    ):
         """Test that _id is removed from data before creation."""
         mock_config = MagicMock()
         mock_config.ENCOUNTER_COLLECTION_NAME = "Encounter"
@@ -71,7 +219,9 @@ class TestEncounterService(unittest.TestCase):
         mock_mongo.create_document.return_value = "123"
         mock_get_mongo.return_value = mock_mongo
 
-        data = {"_id": "should-be-removed", "name": "test"}
+        mock_get_plan.return_value = {"_id": self.VALID_PLAN_ID, "steps": []}
+
+        data = self._valid_create_data(_id="should-be-removed")
 
         EncounterService.create_encounter(data, self.mock_token, self.mock_breadcrumb)
 
@@ -365,9 +515,12 @@ class TestEncounterService(unittest.TestCase):
         self.assertEqual(set_data["saved"], breadcrumb)
         self.assertEqual(set_data["saved"]["from_ip"], "192.168.1.1")
 
+    @patch("src.services.encounter_service.PlanService.get_plan")
     @patch("src.services.encounter_service.Config.get_instance")
     @patch("src.services.encounter_service.MongoIO.get_instance")
-    def test_create_encounter_handles_exception(self, mock_get_mongo, mock_get_config):
+    def test_create_encounter_handles_exception(
+        self, mock_get_mongo, mock_get_config, mock_get_plan
+    ):
         """Test create_encounter handles database exceptions."""
         mock_config = MagicMock()
         mock_config.ENCOUNTER_COLLECTION_NAME = "Encounter"
@@ -377,9 +530,11 @@ class TestEncounterService(unittest.TestCase):
         mock_mongo.create_document.side_effect = Exception("Database error")
         mock_get_mongo.return_value = mock_mongo
 
+        mock_get_plan.return_value = {"_id": self.VALID_PLAN_ID, "steps": []}
+
         with self.assertRaises(HTTPInternalServerError):
             EncounterService.create_encounter(
-                {"name": "test"}, self.mock_token, self.mock_breadcrumb
+                self._valid_create_data(), self.mock_token, self.mock_breadcrumb
             )
 
     @patch("src.services.encounter_service.Config.get_instance")

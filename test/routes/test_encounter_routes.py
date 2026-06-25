@@ -5,6 +5,7 @@ These tests validate the Flask route layer for the Encounter domain, using the
 generated blueprint factory and mocking out the underlying service and
 token/breadcrumb helpers from api_utils.
 """
+
 import unittest
 from unittest.mock import patch
 from flask import Flask
@@ -24,7 +25,10 @@ class TestEncounterRoutes(unittest.TestCase):
         self.client = self.app.test_client()
 
         self.mock_token = {"user_id": "test_user", "roles": ["admin"]}
-        self.mock_breadcrumb = {"at_time": "sometime", "correlation_id": "correlation_ID"}
+        self.mock_breadcrumb = {
+            "at_time": "sometime",
+            "correlation_id": "correlation_ID",
+        }
 
     @patch("src.routes.encounter_routes.create_flask_token")
     @patch("src.routes.encounter_routes.create_flask_breadcrumb")
@@ -50,7 +54,13 @@ class TestEncounterRoutes(unittest.TestCase):
 
         response = self.client.post(
             "/api/encounter",
-            json={"name": "test-encounter", "status": "active"},
+            json={
+                "name": "test-encounter",
+                "status": "active",
+                "mentor_id": "507f1f77bcf86cd799439011",
+                "mentee_id": "507f1f77bcf86cd799439012",
+                "plan_id": "507f1f77bcf86cd799439013",
+            },
         )
 
         self.assertEqual(response.status_code, 201)
@@ -60,6 +70,35 @@ class TestEncounterRoutes(unittest.TestCase):
         mock_get_encounter.assert_called_once_with(
             "123", self.mock_token, self.mock_breadcrumb
         )
+
+    @patch("src.routes.encounter_routes.create_flask_token")
+    @patch("src.routes.encounter_routes.create_flask_breadcrumb")
+    @patch("src.routes.encounter_routes.EncounterService.create_encounter")
+    def test_create_encounter_missing_required_field(
+        self,
+        mock_create_encounter,
+        mock_create_breadcrumb,
+        mock_create_token,
+    ):
+        """Test POST /api/encounter returns 400 when a required id is missing."""
+        from api_utils.flask_utils.exceptions import HTTPBadRequest
+
+        mock_create_token.return_value = self.mock_token
+        mock_create_breadcrumb.return_value = self.mock_breadcrumb
+
+        mock_create_encounter.side_effect = HTTPBadRequest("mentor_id is required")
+
+        response = self.client.post(
+            "/api/encounter",
+            json={
+                "name": "test-encounter",
+                "mentee_id": "507f1f77bcf86cd799439012",
+                "plan_id": "507f1f77bcf86cd799439013",
+            },
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("error", response.json)
 
     @patch("src.routes.encounter_routes.create_flask_token")
     @patch("src.routes.encounter_routes.create_flask_breadcrumb")
@@ -180,9 +219,7 @@ class TestEncounterRoutes(unittest.TestCase):
         mock_create_token.return_value = self.mock_token
         mock_create_breadcrumb.return_value = self.mock_breadcrumb
 
-        mock_get_encounter.side_effect = HTTPNotFound(
-            "Encounter 999 not found"
-        )
+        mock_get_encounter.side_effect = HTTPNotFound("Encounter 999 not found")
 
         response = self.client.get("/api/encounter/999")
 

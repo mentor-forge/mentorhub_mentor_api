@@ -1,6 +1,6 @@
 # L090 – Encounter POST: require mentor_id/mentee_id/plan_id and auto-fill agenda from Plan
 
-**Status**: Pending  
+**Status**: Shipped  
 **Type**: Feature  
 **Depends On**: L080  
 **Description**: Implement the new create behavior for `POST /api/encounter`. The request must include `mentor_id`, `mentee_id`, and `plan_id`; missing or malformed values raise `400`. On create, the service looks up the referenced Plan and auto-fills the encounter's `agenda` from the Plan's `checklist` (each checklist sentence becomes an agenda item `{ "step": <sentence>, "checked": false }`). The client-supplied `agenda` (if any) is ignored/overwritten by the Plan-derived agenda.
@@ -58,4 +58,25 @@ The agent must not update files outside this list.
 
 ## Execution Notes
 
-_Reserved for the task execution agent._
+### Summary of changes
+
+- `src/services/encounter_service.py`:
+  - Imported `PlanService` (`from src.services.plan_service import PlanService`) so the Plan is read through its service — no direct cross-collection access from `EncounterService`.
+  - `create_encounter` now validates that `mentor_id`, `mentee_id`, and `plan_id` are present and valid ObjectId strings (`ObjectId.is_valid`); a missing or malformed value raises `HTTPBadRequest` (400).
+  - Fetches the referenced Plan via `PlanService.get_plan(plan_id, token, breadcrumb)`; an unknown Plan's `HTTPNotFound` (404) propagates.
+  - Added `_build_agenda_from_plan(plan)` which maps the Plan list to `agenda` items `{"step": <entry>, "checked": False}`. It reads `steps` first and falls back to `checklist` (robust to whichever field `PlanService.get_plan` returns), so an empty/absent list yields `agenda == []`. Any client-supplied `agenda` is replaced.
+  - Re-raise tuple widened to `(HTTPForbidden, HTTPBadRequest, HTTPNotFound)` so 400/404 surface correctly instead of being wrapped to 500. System-managed behavior preserved (strip `_id`, set `created`/`saved` from breadcrumb).
+- `test/services/test_encounter_service.py`: existing create tests updated to send the three valid ids and mock `PlanService.get_plan`; added tests for agenda-derived-from-plan (overriding client agenda), empty checklist -> `agenda == []`, each missing required id -> 400, malformed id -> 400, and unknown plan_id -> 404.
+- `test/routes/test_encounter_routes.py`: POST success now sends the three ids; added a missing-required-field -> 400 route test.
+- `test/e2e/test_encounter.py` (`@pytest.mark.e2e`): replaced the create test with a create-from-Plan round trip asserting the derived `agenda`, plus a missing-required-field -> 400 case.
+
+### Test results
+
+- `pipenv run test` — **192 passed, 29 deselected** (e2e excluded).
+- `pipenv run lint` (`black --check`) — the 4 edited files are black-clean (verified explicitly: `black --check` on them exits 0). The repo has pre-existing black failures in unrelated files; those were not touched.
+- `pipenv run build` — passed (exit 0).
+
+### Deferrals / follow-ups
+
+- E2E (`pipenv run db && pipenv run dev && pipenv run e2e`) not run — requires live db/configurator infra. The new e2e tests are kept `@pytest.mark.e2e` and excluded from `pipenv run test`.
+- Note: the current `PlanService.get_plan` returns the stored `checklist` unchanged (the L070 `checklist`->`steps` mapping is not present in the live `plan_service.py`). The agenda builder reads `steps` then falls back to `checklist`, so it works regardless of which field is exposed.
