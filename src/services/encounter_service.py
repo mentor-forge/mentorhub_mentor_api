@@ -11,6 +11,7 @@ from api_utils.flask_utils.exceptions import (
     HTTPNotFound,
     HTTPInternalServerError,
 )
+from api_utils.mongo_utils import encode_document
 from bson import ObjectId
 from bson.errors import InvalidId
 from pymongo import DESCENDING
@@ -180,16 +181,13 @@ class EncounterService:
             # client-supplied agenda.
             data["agenda"] = EncounterService._build_agenda_from_plan(plan)
 
-            # Persist reference ids as BSON ObjectId. The Encounter schema types
-            # mentor_id/mentee_id/plan_id as objectId; storing the raw request
-            # strings fails Mongo validation (bsonType) and breaks ObjectId-based
-            # reads (e.g. the Profile composite matches mentee_id as ObjectId).
-            for field in ("mentor_id", "mentee_id", "plan_id"):
-                data[field] = ObjectId(data[field])
-
             # Remove _id if present (MongoDB will generate it)
             if "_id" in data:
                 del data["_id"]
+
+            # Encode identifier fields to BSON ObjectId so the collection's
+            # $jsonSchema validator accepts the document.
+            encode_document(data, ["mentor_id", "mentee_id", "plan_id"], [])
 
             # Automatically populate required fields: created and saved
             # These are system-managed and should not be provided by the client
