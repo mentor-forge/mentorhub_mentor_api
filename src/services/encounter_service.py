@@ -180,6 +180,13 @@ class EncounterService:
             # client-supplied agenda.
             data["agenda"] = EncounterService._build_agenda_from_plan(plan)
 
+            # Persist reference ids as BSON ObjectId. The Encounter schema types
+            # mentor_id/mentee_id/plan_id as objectId; storing the raw request
+            # strings fails Mongo validation (bsonType) and breaks ObjectId-based
+            # reads (e.g. the Profile composite matches mentee_id as ObjectId).
+            for field in ("mentor_id", "mentee_id", "plan_id"):
+                data[field] = ObjectId(data[field])
+
             # Remove _id if present (MongoDB will generate it)
             if "_id" in data:
                 del data["_id"]

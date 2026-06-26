@@ -64,7 +64,7 @@ def _create_encounter(headers, mentor_id="507f1f77bcf86cd799439011"):
         json={
             "name": "e2e-encounter-rbac-plan",
             "description": "E2E plan for encounter RBAC",
-            "steps": ["review goals"],
+            "checklist": ["review goals"],
         },
     )
     assert plan_response.status_code == 201, _err(plan_response, 201)
@@ -89,7 +89,7 @@ def test_create_encounter_from_plan_endpoint():
     token = get_auth_token()
     headers = {"Authorization": f"Bearer {token}"}
 
-    # Create a Plan with a checklist (exposed as `steps`) to derive the agenda.
+    # Create a Plan with a checklist to derive the encounter agenda.
     plan_steps = ["review goals", "discuss blockers"]
     plan_response = requests.post(
         f"{BASE_URL}/api/plan",
@@ -97,7 +97,7 @@ def test_create_encounter_from_plan_endpoint():
         json={
             "name": "e2e-encounter-plan",
             "description": "E2E plan for encounter agenda autofill",
-            "steps": plan_steps,
+            "checklist": plan_steps,
         },
     )
     assert plan_response.status_code == 201, _err(plan_response, 201)
