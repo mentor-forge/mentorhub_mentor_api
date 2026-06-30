@@ -594,96 +594,16 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
   /api/encounter:
-    get:
-      tags:
-        - Encounter
-      summary: Get all Encounter documents
-      description: Retrieve infinite scroll batch of sorted, filtered Encounter documents
-      operationId: getEncounters
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: name
-          in: query
-          required: false
-          description: Optional name filter (supports partial matches, case-insensitive)
-          schema:
-            type: string
-            example: my-Encounter
-        - name: after_id
-          in: query
-          required: false
-          description: Cursor for infinite scroll (ID of last item from previous batch, omit for first request)
-          schema:
-            type: string
-            pattern: '^[0-9a-fA-F]{24}$'
-            example: 507f1f77bcf86cd799439011
-        - name: limit
-          in: query
-          required: false
-          description: Items per page (max 100)
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-            default: 10
-            example: 10
-        - name: sort_by
-          in: query
-          required: false
-          description: Field to sort by (name, description, status, created.at_time, saved.at_time)
-          schema:
-            type: string
-            default: name
-            example: name
-        - name: order
-          in: query
-          required: false
-          description: Sort order
-          schema:
-            type: string
-            enum: [asc, desc]
-            default: asc
-            example: asc
-      responses:
-        '200':
-          description: Successfully retrieved matching documents
-          content:
-            application/json:
-              schema:
-                type: object
-                required:
-                  - items
-                  - limit
-                  - has_more
-                  - next_cursor
-                properties:
-                  items:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/Encounter'
-                  limit:
-                    type: integer
-                    example: 10
-                  has_more:
-                    type: boolean
-                    example: true
-                  next_cursor:
-                    type: string
-                    nullable: true
-                    pattern: '^[0-9a-fA-F]{24}$'
-                    example: 507f1f77bcf86cd799439011
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '500':
-          $ref: '#/components/responses/InternalError'
     post:
       tags:
         - Encounter
       summary: Create a new Encounter document
-      description: Create a new Encounter document (requires staff or admin role)
+      description: |
+        Create a new Encounter document (requires the `mentor` or `admin` role).
+        The `mentor_id`, `mentee_id`, and `plan_id` fields are **required**. The
+        server auto-fills the `agenda` from the referenced Plan's `checklist`
+        (one agenda item per checklist step, each initialized as unchecked), so
+        the client must **not** send `agenda`.
       operationId: createEncounter
       security:
         - bearerAuth: []
@@ -704,10 +624,14 @@ paths:
                   _id:
                     type: string
                     pattern: '^[0-9a-fA-F]{24}$'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalError'
 
@@ -716,7 +640,9 @@ paths:
       tags:
         - Encounter
       summary: Get Encounter by EncounterId
-      description: Retrieve a specific Encounter document by its EncounterId
+      description: |
+        Retrieve a specific Encounter document by its EncounterId. Read access is
+        open: any `mentor` or `admin` may read any encounter (no ownership check).
       operationId: getEncounter
       security:
         - bearerAuth: []
@@ -746,7 +672,11 @@ paths:
       tags:
         - Encounter
       summary: Update Encounter document
-      description: Update a Encounter document (requires admin role). Cannot update _id, created, or saved fields.
+      description: |
+        Update an Encounter document. The caller must be an `admin` **or** the
+        mentor who owns the encounter (the caller's Profile `_id` equals the
+        encounter's `mentor_id`); other mentors receive `403`. Cannot update _id,
+        created, or saved fields.
       operationId: updateEncounter
       security:
         - bearerAuth: []
@@ -1693,6 +1623,23 @@ components:
           description: The Encounter Plan used for this encounter
           pattern: '^[0-9a-fA-F]{24}$'
           example: 507f1f77bcf86cd799439011
+        agenda:
+          type: array
+          description: |
+            The checklist the mentor works through during the encounter,
+            auto-filled by the server from the referenced Plan's `checklist`.
+          items:
+            type: object
+            additionalProperties: false
+            properties:
+              checked:
+                type: boolean
+                description: Set to true when the step is checked off
+              step:
+                type: string
+                description: The checklist step
+                pattern: '^[^\t\n]{1,255}$'
+                example: Review last week's homework
         date:
           type: string
           format: date-time
@@ -1724,7 +1671,14 @@ components:
 
     EncounterInput:
       type: object
-      description: Input for creating a Encounter document
+      description: |
+        Input for creating an Encounter document. `mentor_id`, `mentee_id`, and
+        `plan_id` are required. `agenda` is not accepted here; the server
+        auto-fills it from the referenced Plan's `checklist`.
+      required:
+        - mentor_id
+        - mentee_id
+        - plan_id
       properties:
         mentor_id:
           type: string
@@ -1781,6 +1735,23 @@ components:
           type: string
           description: The Encounter Plan used for this encounter
           pattern: '^[0-9a-fA-F]{24}$'
+        agenda:
+          type: array
+          description: |
+            The checklist the mentor works through during the encounter. May be
+            updated so individual checklist items can be checked off.
+          items:
+            type: object
+            additionalProperties: false
+            properties:
+              checked:
+                type: boolean
+                description: Set to true when the step is checked off
+              step:
+                type: string
+                description: The checklist step
+                pattern: '^[^\t\n]{1,255}$'
+                example: Review last week's homework
         date:
           type: string
           format: date-time

@@ -6,27 +6,18 @@ Handles RBAC checks and MongoDB operations for Encounter domain.
 
 from api_utils import MongoIO, Config
 from api_utils.flask_utils.exceptions import (
-    HTTPBadRequest,
     HTTPForbidden,
     HTTPNotFound,
     HTTPInternalServerError,
 )
-from api_utils.mongo_utils import execute_infinite_scroll_query
+from api_utils.mongo_utils import encode_document
 from bson import ObjectId
 from bson.errors import InvalidId
 from pymongo import DESCENDING
+from src.services.plan_service import PlanService
 import logging
 
 logger = logging.getLogger(__name__)
-
-# Allowed sort fields for Encounter domain
-ALLOWED_SORT_FIELDS = [
-    "name",
-    "description",
-    "status",
-    "created.at_time",
-    "saved.at_time",
-]
 
 
 class EncounterService:
@@ -34,40 +25,56 @@ class EncounterService:
     Service class for Encounter domain operations.
 
     Handles:
-    - RBAC authorization checks (placeholder for future implementation)
+    - RBAC authorization checks (mentor/admin read; owner-or-admin update)
     - MongoDB operations via MongoIO singleton
     - Business logic for Encounter domain
     """
 
     @staticmethod
-    def _check_permission(token, operation):
+    def _check_permission(token, operation, breadcrumb, encounter=None):
         """
-        Check if the user has permission to perform an operation.
+        Authorize an operation for the Encounter domain.
+
+        Admins may perform any operation. Otherwise the caller must hold the
+        ``mentor`` role; for ownership-sensitive operations (where ``encounter``
+        is supplied) the caller's resolved Profile ``_id`` must equal the
+        encounter's ``mentor_id``. The caller's Profile is resolved through
+        ``ProfileService`` (service-to-service) rather than by querying the
+        profiles collection directly, keeping this service a thin pass-through.
 
         Args:
             token: Token dictionary with user_id and roles
-            operation: The operation being performed (e.g., 'read', 'create', 'update')
+            operation: The operation being performed (e.g., 'read', 'update')
+            breadcrumb: Breadcrumb dictionary for audit/logging
+            encounter: The target encounter document for ownership checks
 
         Raises:
-            HTTPForbidden: If user doesn't have required permission
-
-        Note: This is a placeholder for future RBAC implementation.
-        For now, all operations require a valid token (authentication only).
-
-        Example RBAC implementation:
-            if operation == 'update':
-                # Update requires admin role
-                if 'admin' not in token.get('roles', []):
-                    raise HTTPForbidden("Admin role required to update encounter documents")
-            elif operation == 'create':
-                # Create requires staff or admin role
-                if not any(role in token.get('roles', []) for role in ['staff', 'admin']):
-                    raise HTTPForbidden("Staff or admin role required to create encounter documents")
-            elif operation == 'read':
-                # Read requires any authenticated user (no additional check needed)
-                pass
+            HTTPForbidden: If the caller lacks the required role or ownership
         """
-        pass
+        # Lazy import mirrors ProfileService's own lazy import of this service,
+        # avoiding a module-load circular import.
+        from src.services.profile_service import ProfileService
+
+        config = Config.get_instance()
+        roles = token.get("roles", []) or []
+
+        if config.ROLE_ADMIN in roles:
+            return
+
+        if config.ROLE_MENTOR not in roles:
+            raise HTTPForbidden(
+                "Mentor or admin role required to access encounter data"
+            )
+
+        if encounter is not None:
+            profile = ProfileService.get_profile_by_token(token, breadcrumb)
+            caller_profile_id = profile.get("_id") if profile else None
+            if caller_profile_id is None or str(caller_profile_id) != str(
+                encounter.get("mentor_id")
+            ):
+                raise HTTPForbidden(
+                    "Only the owning mentor or an admin may update this encounter"
+                )
 
     @staticmethod
     def _validate_update_data(data):
@@ -87,9 +94,33 @@ class EncounterService:
                 raise HTTPForbidden(f"Cannot update {field} field")
 
     @staticmethod
+    def _build_agenda_from_plan(plan):
+        """
+        Derive the encounter ``agenda`` from a Plan's checklist.
+
+        ``PlanService`` exposes the Plan list as ``steps`` (stored as
+        ``checklist``); each entry becomes an agenda item
+        ``{"step": <entry>, "checked": False}``. An empty or absent list
+        yields ``[]``.
+        """
+        steps = plan.get("steps")
+        if steps is None:
+            steps = plan.get("checklist")
+        if not steps:
+            return []
+        return [{"step": step, "checked": False} for step in steps]
+
+    @staticmethod
     def create_encounter(data, token, breadcrumb):
         """
         Create a new encounter document.
+
+        Field-level data quality (required reference ids, valid ObjectId
+        shapes) is delegated to the collection's ``$jsonSchema`` validator
+        rather than checked here, keeping the service a thin pass-through. The
+        referenced Plan is fetched via ``PlanService`` and its checklist is used
+        to auto-fill the encounter ``agenda`` (any client-supplied ``agenda`` is
+        replaced). A missing Plan surfaces as ``HTTPNotFound`` (404).
 
         Args:
             data: Dictionary containing encounter data
@@ -100,11 +131,23 @@ class EncounterService:
             str: The ID of the created encounter document
         """
         try:
-            EncounterService._check_permission(token, "create")
+            EncounterService._check_permission(token, "create", breadcrumb)
+
+            # Look up the referenced Plan via PlanService (no direct
+            # cross-collection access). A missing Plan raises HTTPNotFound.
+            plan = PlanService.get_plan(data["plan_id"], token, breadcrumb)
+
+            # Auto-fill agenda from the Plan checklist, overriding any
+            # client-supplied agenda.
+            data["agenda"] = EncounterService._build_agenda_from_plan(plan)
 
             # Remove _id if present (MongoDB will generate it)
             if "_id" in data:
                 del data["_id"]
+
+            # Encode identifier fields to BSON ObjectId so the collection's
+            # $jsonSchema validator accepts the document.
+            encode_document(data, ["mentor_id", "mentee_id", "plan_id"], [])
 
             # Automatically populate required fields: created and saved
             # These are system-managed and should not be provided by the client
@@ -119,70 +162,12 @@ class EncounterService:
                 f"Created encounter { encounter_id} for user {token.get('user_id')}"
             )
             return encounter_id
-        except HTTPForbidden:
+        except (HTTPForbidden, HTTPNotFound):
             raise
         except Exception as e:
             error_msg = str(e)
             logger.error(f"Error creating encounter: {error_msg}")
             raise HTTPInternalServerError(f"Failed to create encounter: {error_msg}")
-
-    @staticmethod
-    def get_encounters(
-        token,
-        breadcrumb,
-        name=None,
-        after_id=None,
-        limit=10,
-        sort_by="name",
-        order="asc",
-    ):
-        """
-        Get infinite scroll batch of sorted, filtered encounter documents.
-
-        Args:
-            token: Authentication token
-            breadcrumb: Audit breadcrumb
-            name: Optional name filter (simple search)
-            after_id: Cursor (ID of last item from previous batch, None for first request)
-            limit: Items per batch
-            sort_by: Field to sort by
-            order: Sort order ('asc' or 'desc')
-
-        Returns:
-            dict: {
-                'items': [...],
-                'limit': int,
-                'has_more': bool,
-                'next_cursor': str|None  # ID of last item, or None if no more
-            }
-
-        Raises:
-            HTTPBadRequest: If invalid parameters provided
-        """
-        try:
-            EncounterService._check_permission(token, "read")
-            mongo = MongoIO.get_instance()
-            config = Config.get_instance()
-            collection = mongo.get_collection(config.ENCOUNTER_COLLECTION_NAME)
-            result = execute_infinite_scroll_query(
-                collection,
-                name=name,
-                after_id=after_id,
-                limit=limit,
-                sort_by=sort_by,
-                order=order,
-                allowed_sort_fields=ALLOWED_SORT_FIELDS,
-            )
-            logger.info(
-                f"Retrieved {len(result['items'])} encounters (has_more={result['has_more']}) "
-                f"for user {token.get('user_id')}"
-            )
-            return result
-        except HTTPBadRequest:
-            raise
-        except Exception as e:
-            logger.error(f"Error retrieving encounters: {str(e)}")
-            raise HTTPInternalServerError("Failed to retrieve encounters")
 
     @staticmethod
     def _normalize_mentee_id(mentee_id):
@@ -220,7 +205,7 @@ class EncounterService:
             dict | None: The most recent encounter summary, or ``None`` when the
             mentee has no encounters.
         """
-        EncounterService._check_permission(token, "read")
+        EncounterService._check_permission(token, "read", breadcrumb)
 
         mongo = MongoIO.get_instance()
         config = Config.get_instance()
@@ -258,7 +243,7 @@ class EncounterService:
         Returns:
             list[dict]: The mentee's Encounter documents, most recent first.
         """
-        EncounterService._check_permission(token, "read")
+        EncounterService._check_permission(token, "read", breadcrumb)
 
         mongo = MongoIO.get_instance()
         config = Config.get_instance()
@@ -290,7 +275,7 @@ class EncounterService:
             HTTPNotFound: If encounter is not found
         """
         try:
-            EncounterService._check_permission(token, "read")
+            EncounterService._check_permission(token, "read", breadcrumb)
 
             mongo = MongoIO.get_instance()
             config = Config.get_instance()
@@ -304,7 +289,7 @@ class EncounterService:
                 f"Retrieved encounter { encounter_id} for user {token.get('user_id')}"
             )
             return encounter
-        except HTTPNotFound:
+        except (HTTPForbidden, HTTPNotFound):
             raise
         except Exception as e:
             logger.error(f"Error retrieving encounter { encounter_id}: {str(e)}")
@@ -327,10 +312,30 @@ class EncounterService:
             dict: The updated encounter document
 
         Raises:
+            HTTPForbidden: If the caller is not an admin or the owning mentor
             HTTPNotFound: If encounter is not found
         """
         try:
-            EncounterService._check_permission(token, "update")
+            # Gate on role before any datastore access so unauthorized callers
+            # never trigger a read.
+            EncounterService._check_permission(token, "update", breadcrumb)
+
+            mongo = MongoIO.get_instance()
+            config = Config.get_instance()
+
+            # Load the target encounter so a missing document yields 404 before
+            # the ownership check (and to read its mentor_id).
+            encounter = mongo.get_document(
+                config.ENCOUNTER_COLLECTION_NAME, encounter_id
+            )
+            if encounter is None:
+                raise HTTPNotFound(f"Encounter { encounter_id} not found")
+
+            # Admins may update any encounter; other mentors must own it.
+            EncounterService._check_permission(
+                token, "update", breadcrumb, encounter=encounter
+            )
+
             EncounterService._validate_update_data(data)
 
             # Build update data with $set operator (excluding restricted fields)
@@ -341,8 +346,6 @@ class EncounterService:
             # Use breadcrumb directly as it already has the correct structure
             set_data["saved"] = breadcrumb
 
-            mongo = MongoIO.get_instance()
-            config = Config.get_instance()
             updated = mongo.update_document(
                 config.ENCOUNTER_COLLECTION_NAME,
                 document_id=encounter_id,

@@ -8,11 +8,20 @@ from bson import ObjectId
 from pymongo import DESCENDING
 from src.services.encounter_service import EncounterService
 from api_utils.flask_utils.exceptions import (
-    HTTPBadRequest,
     HTTPForbidden,
     HTTPNotFound,
     HTTPInternalServerError,
 )
+
+
+def _make_config():
+    """Build a config mock exposing the names/role constants the service reads."""
+    mock_config = MagicMock()
+    mock_config.ENCOUNTER_COLLECTION_NAME = "Encounter"
+    mock_config.PROFILE_COLLECTION_NAME = "Profile"
+    mock_config.ROLE_MENTOR = "mentor"
+    mock_config.ROLE_ADMIN = "admin"
+    return mock_config
 
 
 class TestEncounterService(unittest.TestCase):
@@ -28,23 +37,41 @@ class TestEncounterService(unittest.TestCase):
             "correlation_id": "test-correlation-id",
         }
 
+    # Valid 24-hex ObjectId strings reused across create tests.
+    VALID_MENTOR_ID = "507f1f77bcf86cd799439011"
+    VALID_MENTEE_ID = "507f1f77bcf86cd799439012"
+    VALID_PLAN_ID = "507f1f77bcf86cd799439013"
+
+    def _valid_create_data(self, **overrides):
+        """Build a minimal valid create payload with the three required ids."""
+        data = {
+            "name": "test-encounter",
+            "description": "Test encounter",
+            "status": "active",
+            "mentor_id": self.VALID_MENTOR_ID,
+            "mentee_id": self.VALID_MENTEE_ID,
+            "plan_id": self.VALID_PLAN_ID,
+        }
+        data.update(overrides)
+        return data
+
+    @patch("src.services.encounter_service.PlanService.get_plan")
     @patch("src.services.encounter_service.Config.get_instance")
     @patch("src.services.encounter_service.MongoIO.get_instance")
-    def test_create_encounter_success(self, mock_get_mongo, mock_get_config):
+    def test_create_encounter_success(
+        self, mock_get_mongo, mock_get_config, mock_get_plan
+    ):
         """Test successful creation of a encounter document."""
-        mock_config = MagicMock()
-        mock_config.ENCOUNTER_COLLECTION_NAME = "Encounter"
+        mock_config = _make_config()
         mock_get_config.return_value = mock_config
 
         mock_mongo = MagicMock()
         mock_mongo.create_document.return_value = "123"
         mock_get_mongo.return_value = mock_mongo
 
-        data = {
-            "name": "test-encounter",
-            "description": "Test encounter",
-            "status": "active",
-        }
+        mock_get_plan.return_value = {"_id": self.VALID_PLAN_ID, "steps": []}
+
+        data = self._valid_create_data()
 
         encounter_id = EncounterService.create_encounter(
             data, self.mock_token, self.mock_breadcrumb
@@ -58,20 +85,160 @@ class TestEncounterService(unittest.TestCase):
         self.assertIn("created", created_data)
         self.assertIn("saved", created_data)
         self.assertEqual(created_data["name"], "test-encounter")
+        # Plan looked up via PlanService, not a direct Plan collection read.
+        mock_get_plan.assert_called_once_with(
+            self.VALID_PLAN_ID, self.mock_token, self.mock_breadcrumb
+        )
 
+    @patch("src.services.encounter_service.PlanService.get_plan")
     @patch("src.services.encounter_service.Config.get_instance")
     @patch("src.services.encounter_service.MongoIO.get_instance")
-    def test_create_encounter_removes_id(self, mock_get_mongo, mock_get_config):
-        """Test that _id is removed from data before creation."""
-        mock_config = MagicMock()
-        mock_config.ENCOUNTER_COLLECTION_NAME = "Encounter"
+    def test_create_encounter_agenda_from_plan_checklist(
+        self, mock_get_mongo, mock_get_config, mock_get_plan
+    ):
+        """agenda is derived from the Plan checklist, overriding client agenda."""
+        mock_config = _make_config()
         mock_get_config.return_value = mock_config
 
         mock_mongo = MagicMock()
         mock_mongo.create_document.return_value = "123"
         mock_get_mongo.return_value = mock_mongo
 
-        data = {"_id": "should-be-removed", "name": "test"}
+        mock_get_plan.return_value = {
+            "_id": self.VALID_PLAN_ID,
+            "steps": ["review goals", "discuss blockers"],
+        }
+
+        # Client-supplied agenda must be ignored/overwritten.
+        data = self._valid_create_data(
+            agenda=[{"step": "client provided", "checked": True}]
+        )
+
+        EncounterService.create_encounter(data, self.mock_token, self.mock_breadcrumb)
+
+        created_data = mock_mongo.create_document.call_args[0][1]
+        self.assertEqual(
+            created_data["agenda"],
+            [
+                {"step": "review goals", "checked": False},
+                {"step": "discuss blockers", "checked": False},
+            ],
+        )
+
+    @patch("src.services.encounter_service.PlanService.get_plan")
+    @patch("src.services.encounter_service.Config.get_instance")
+    @patch("src.services.encounter_service.MongoIO.get_instance")
+    def test_create_encounter_empty_checklist_yields_empty_agenda(
+        self, mock_get_mongo, mock_get_config, mock_get_plan
+    ):
+        """An empty/absent Plan checklist yields agenda == []."""
+        mock_config = _make_config()
+        mock_get_config.return_value = mock_config
+
+        mock_mongo = MagicMock()
+        mock_mongo.create_document.return_value = "123"
+        mock_get_mongo.return_value = mock_mongo
+
+        # Plan with no checklist/steps at all.
+        mock_get_plan.return_value = {"_id": self.VALID_PLAN_ID}
+
+        data = self._valid_create_data()
+        EncounterService.create_encounter(data, self.mock_token, self.mock_breadcrumb)
+
+        created_data = mock_mongo.create_document.call_args[0][1]
+        self.assertEqual(created_data["agenda"], [])
+
+    @patch("src.services.encounter_service.PlanService.get_plan")
+    @patch("src.services.encounter_service.Config.get_instance")
+    @patch("src.services.encounter_service.MongoIO.get_instance")
+    def test_create_encounter_missing_id_delegates_to_mongodb(
+        self, mock_get_mongo, mock_get_config, mock_get_plan
+    ):
+        """
+        The service no longer pre-validates reference ids.
+
+        A document missing a required id is forwarded to MongoDB so the
+        collection's ``$jsonSchema`` validator can reject it; the service does
+        not raise a client-side ``HTTPBadRequest`` of its own.
+        """
+        mock_config = _make_config()
+        mock_get_config.return_value = mock_config
+        mock_mongo = MagicMock()
+        mock_mongo.create_document.return_value = "123"
+        mock_get_mongo.return_value = mock_mongo
+        mock_get_plan.return_value = {"_id": self.VALID_PLAN_ID, "steps": []}
+
+        data = self._valid_create_data()
+        del data["mentor_id"]
+        result = EncounterService.create_encounter(
+            data, self.mock_token, self.mock_breadcrumb
+        )
+
+        self.assertEqual(result, "123")
+        mock_mongo.create_document.assert_called_once()
+
+    @patch("src.services.encounter_service.PlanService.get_plan")
+    @patch("src.services.encounter_service.Config.get_instance")
+    @patch("src.services.encounter_service.MongoIO.get_instance")
+    def test_create_encounter_surfaces_mongodb_validation_error(
+        self, mock_get_mongo, mock_get_config, mock_get_plan
+    ):
+        """
+        A MongoDB rejection (e.g. ``$jsonSchema`` violation) is surfaced.
+
+        Data quality is owned by the datastore, so when ``create_document``
+        rejects a document the service propagates the failure rather than
+        validating ids itself.
+        """
+        mock_config = _make_config()
+        mock_get_config.return_value = mock_config
+        mock_mongo = MagicMock()
+        mock_mongo.create_document.side_effect = Exception("Document failed validation")
+        mock_get_mongo.return_value = mock_mongo
+        mock_get_plan.return_value = {"_id": self.VALID_PLAN_ID, "steps": []}
+
+        data = self._valid_create_data()
+        with self.assertRaises(HTTPInternalServerError):
+            EncounterService.create_encounter(
+                data, self.mock_token, self.mock_breadcrumb
+            )
+
+    @patch("src.services.encounter_service.PlanService.get_plan")
+    @patch("src.services.encounter_service.Config.get_instance")
+    @patch("src.services.encounter_service.MongoIO.get_instance")
+    def test_create_encounter_unknown_plan_raises_not_found(
+        self, mock_get_mongo, mock_get_config, mock_get_plan
+    ):
+        """An unknown plan_id surfaces as HTTPNotFound (404)."""
+        mock_config = _make_config()
+        mock_get_config.return_value = mock_config
+        mock_get_mongo.return_value = MagicMock()
+
+        mock_get_plan.side_effect = HTTPNotFound(f"Plan {self.VALID_PLAN_ID} not found")
+
+        data = self._valid_create_data()
+        with self.assertRaises(HTTPNotFound):
+            EncounterService.create_encounter(
+                data, self.mock_token, self.mock_breadcrumb
+            )
+
+    @patch("src.services.encounter_service.PlanService.get_plan")
+    @patch("src.services.encounter_service.Config.get_instance")
+    @patch("src.services.encounter_service.MongoIO.get_instance")
+    def test_create_encounter_removes_id(
+        self, mock_get_mongo, mock_get_config, mock_get_plan
+    ):
+        """Test that _id is removed from data before creation."""
+        mock_config = _make_config()
+        mock_get_config.return_value = mock_config
+
+        mock_mongo = MagicMock()
+        mock_mongo.create_document.return_value = "123"
+        mock_get_mongo.return_value = mock_mongo
+
+        mock_get_plan.return_value = {"_id": self.VALID_PLAN_ID, "steps": []}
+
+        data = self._valid_create_data(_id="should-be-removed")
 
         EncounterService.create_encounter(data, self.mock_token, self.mock_breadcrumb)
 
@@ -81,144 +248,9 @@ class TestEncounterService(unittest.TestCase):
 
     @patch("src.services.encounter_service.Config.get_instance")
     @patch("src.services.encounter_service.MongoIO.get_instance")
-    def test_get_encounters_first_batch(self, mock_get_mongo, mock_get_config):
-        """Test successful retrieval of first batch (no cursor)."""
-        mock_config = MagicMock()
-        mock_config.ENCOUNTER_COLLECTION_NAME = "Encounter"
-        mock_get_config.return_value = mock_config
-
-        mock_collection = MagicMock()
-        mock_cursor = MagicMock()
-        mock_collection.find.return_value = mock_cursor
-        mock_cursor.sort.return_value = mock_cursor
-        mock_cursor.limit.return_value = mock_cursor
-        mock_cursor.__iter__ = lambda self: iter(
-            [
-                {"_id": ObjectId("507f1f77bcf86cd799439011"), "name": "encounter1"},
-                {"_id": ObjectId("507f1f77bcf86cd799439012"), "name": "encounter2"},
-            ]
-        )
-
-        mock_mongo = MagicMock()
-        mock_mongo.get_collection.return_value = mock_collection
-        mock_get_mongo.return_value = mock_mongo
-
-        result = EncounterService.get_encounters(
-            self.mock_token, self.mock_breadcrumb, limit=10
-        )
-
-        self.assertIn("items", result)
-        self.assertIn("limit", result)
-        self.assertIn("has_more", result)
-        self.assertIn("next_cursor", result)
-        self.assertEqual(len(result["items"]), 2)
-        self.assertEqual(result["limit"], 10)
-        self.assertFalse(result["has_more"])
-        self.assertIsNone(result["next_cursor"])
-
-    @patch("src.services.encounter_service.Config.get_instance")
-    @patch("src.services.encounter_service.MongoIO.get_instance")
-    def test_get_encounters_invalid_limit_too_small(
-        self, mock_get_mongo, mock_get_config
-    ):
-        """Test get_encounters raises HTTPBadRequest for limit < 1."""
-        mock_config = MagicMock()
-        mock_config.ENCOUNTER_COLLECTION_NAME = "Encounter"
-        mock_get_config.return_value = mock_config
-        mock_mongo = MagicMock()
-        mock_mongo.get_collection.return_value = MagicMock()
-        mock_get_mongo.return_value = mock_mongo
-
-        with self.assertRaises(HTTPBadRequest) as context:
-            EncounterService.get_encounters(
-                self.mock_token, self.mock_breadcrumb, limit=0
-            )
-        self.assertIn("limit must be >= 1", str(context.exception))
-
-    @patch("src.services.encounter_service.Config.get_instance")
-    @patch("src.services.encounter_service.MongoIO.get_instance")
-    def test_get_encounters_invalid_limit_too_large(
-        self, mock_get_mongo, mock_get_config
-    ):
-        """Test get_encounters raises HTTPBadRequest for limit > 100."""
-        mock_config = MagicMock()
-        mock_config.ENCOUNTER_COLLECTION_NAME = "Encounter"
-        mock_get_config.return_value = mock_config
-        mock_mongo = MagicMock()
-        mock_mongo.get_collection.return_value = MagicMock()
-        mock_get_mongo.return_value = mock_mongo
-
-        with self.assertRaises(HTTPBadRequest) as context:
-            EncounterService.get_encounters(
-                self.mock_token, self.mock_breadcrumb, limit=101
-            )
-        self.assertIn("limit must be <= 100", str(context.exception))
-
-    @patch("src.services.encounter_service.Config.get_instance")
-    @patch("src.services.encounter_service.MongoIO.get_instance")
-    def test_get_encounters_invalid_sort_by(self, mock_get_mongo, mock_get_config):
-        """Test get_encounters raises HTTPBadRequest for invalid sort_by."""
-        mock_config = MagicMock()
-        mock_config.ENCOUNTER_COLLECTION_NAME = "Encounter"
-        mock_get_config.return_value = mock_config
-        mock_mongo = MagicMock()
-        mock_mongo.get_collection.return_value = MagicMock()
-        mock_get_mongo.return_value = mock_mongo
-
-        with self.assertRaises(HTTPBadRequest) as context:
-            EncounterService.get_encounters(
-                self.mock_token,
-                self.mock_breadcrumb,
-                sort_by="invalid_field",
-            )
-        self.assertIn("sort_by must be one of", str(context.exception))
-
-    @patch("src.services.encounter_service.Config.get_instance")
-    @patch("src.services.encounter_service.MongoIO.get_instance")
-    def test_get_encounters_invalid_order(self, mock_get_mongo, mock_get_config):
-        """Test get_encounters raises HTTPBadRequest for invalid order."""
-        mock_config = MagicMock()
-        mock_config.ENCOUNTER_COLLECTION_NAME = "Encounter"
-        mock_get_config.return_value = mock_config
-        mock_mongo = MagicMock()
-        mock_mongo.get_collection.return_value = MagicMock()
-        mock_get_mongo.return_value = mock_mongo
-
-        with self.assertRaises(HTTPBadRequest) as context:
-            EncounterService.get_encounters(
-                self.mock_token,
-                self.mock_breadcrumb,
-                order="invalid",
-            )
-        self.assertIn("order must be 'asc' or 'desc'", str(context.exception))
-
-    @patch("src.services.encounter_service.Config.get_instance")
-    @patch("src.services.encounter_service.MongoIO.get_instance")
-    def test_get_encounters_invalid_after_id(self, mock_get_mongo, mock_get_config):
-        """Test get_encounters raises HTTPBadRequest for invalid after_id."""
-        mock_config = MagicMock()
-        mock_config.ENCOUNTER_COLLECTION_NAME = "Encounter"
-        mock_get_config.return_value = mock_config
-        mock_mongo = MagicMock()
-        mock_mongo.get_collection.return_value = MagicMock()
-        mock_get_mongo.return_value = mock_mongo
-
-        with self.assertRaises(HTTPBadRequest) as context:
-            EncounterService.get_encounters(
-                self.mock_token,
-                self.mock_breadcrumb,
-                after_id="invalid",
-            )
-        self.assertIn(
-            "after_id must be a valid MongoDB ObjectId", str(context.exception)
-        )
-
-    @patch("src.services.encounter_service.Config.get_instance")
-    @patch("src.services.encounter_service.MongoIO.get_instance")
     def test_get_encounter_success(self, mock_get_mongo, mock_get_config):
         """Test successful retrieval of a specific encounter document."""
-        mock_config = MagicMock()
-        mock_config.ENCOUNTER_COLLECTION_NAME = "Encounter"
+        mock_config = _make_config()
         mock_get_config.return_value = mock_config
 
         mock_mongo = MagicMock()
@@ -240,8 +272,7 @@ class TestEncounterService(unittest.TestCase):
     @patch("src.services.encounter_service.MongoIO.get_instance")
     def test_get_encounter_not_found(self, mock_get_mongo, mock_get_config):
         """Test get_encounter raises HTTPNotFound when document not found."""
-        mock_config = MagicMock()
-        mock_config.ENCOUNTER_COLLECTION_NAME = "Encounter"
+        mock_config = _make_config()
         mock_get_config.return_value = mock_config
 
         mock_mongo = MagicMock()
@@ -256,8 +287,7 @@ class TestEncounterService(unittest.TestCase):
     @patch("src.services.encounter_service.MongoIO.get_instance")
     def test_update_encounter_success(self, mock_get_mongo, mock_get_config):
         """Test successful update of a encounter document."""
-        mock_config = MagicMock()
-        mock_config.ENCOUNTER_COLLECTION_NAME = "Encounter"
+        mock_config = _make_config()
         mock_get_config.return_value = mock_config
 
         mock_mongo = MagicMock()
@@ -288,8 +318,7 @@ class TestEncounterService(unittest.TestCase):
         self, mock_get_mongo, mock_get_config
     ):
         """Test update_encounter raises HTTPForbidden for restricted fields."""
-        mock_config = MagicMock()
-        mock_config.ENCOUNTER_COLLECTION_NAME = "Encounter"
+        mock_config = _make_config()
         mock_get_config.return_value = mock_config
 
         mock_mongo = MagicMock()
@@ -320,8 +349,7 @@ class TestEncounterService(unittest.TestCase):
     @patch("src.services.encounter_service.MongoIO.get_instance")
     def test_update_encounter_not_found(self, mock_get_mongo, mock_get_config):
         """Test update_encounter raises HTTPNotFound when document not found."""
-        mock_config = MagicMock()
-        mock_config.ENCOUNTER_COLLECTION_NAME = "Encounter"
+        mock_config = _make_config()
         mock_get_config.return_value = mock_config
 
         mock_mongo = MagicMock()
@@ -340,8 +368,7 @@ class TestEncounterService(unittest.TestCase):
         self, mock_get_mongo, mock_get_config
     ):
         """Test update_encounter uses breadcrumb directly for saved field."""
-        mock_config = MagicMock()
-        mock_config.ENCOUNTER_COLLECTION_NAME = "Encounter"
+        mock_config = _make_config()
         mock_get_config.return_value = mock_config
 
         mock_mongo = MagicMock()
@@ -365,47 +392,32 @@ class TestEncounterService(unittest.TestCase):
         self.assertEqual(set_data["saved"], breadcrumb)
         self.assertEqual(set_data["saved"]["from_ip"], "192.168.1.1")
 
+    @patch("src.services.encounter_service.PlanService.get_plan")
     @patch("src.services.encounter_service.Config.get_instance")
     @patch("src.services.encounter_service.MongoIO.get_instance")
-    def test_create_encounter_handles_exception(self, mock_get_mongo, mock_get_config):
+    def test_create_encounter_handles_exception(
+        self, mock_get_mongo, mock_get_config, mock_get_plan
+    ):
         """Test create_encounter handles database exceptions."""
-        mock_config = MagicMock()
-        mock_config.ENCOUNTER_COLLECTION_NAME = "Encounter"
+        mock_config = _make_config()
         mock_get_config.return_value = mock_config
 
         mock_mongo = MagicMock()
         mock_mongo.create_document.side_effect = Exception("Database error")
         mock_get_mongo.return_value = mock_mongo
 
+        mock_get_plan.return_value = {"_id": self.VALID_PLAN_ID, "steps": []}
+
         with self.assertRaises(HTTPInternalServerError):
             EncounterService.create_encounter(
-                {"name": "test"}, self.mock_token, self.mock_breadcrumb
+                self._valid_create_data(), self.mock_token, self.mock_breadcrumb
             )
-
-    @patch("src.services.encounter_service.Config.get_instance")
-    @patch("src.services.encounter_service.MongoIO.get_instance")
-    def test_get_encounters_handles_exception(self, mock_get_mongo, mock_get_config):
-        """Test get_encounters handles database exceptions."""
-        mock_config = MagicMock()
-        mock_config.ENCOUNTER_COLLECTION_NAME = "Encounter"
-        mock_get_config.return_value = mock_config
-
-        mock_collection = MagicMock()
-        mock_collection.find.side_effect = Exception("Database error")
-
-        mock_mongo = MagicMock()
-        mock_mongo.get_collection.return_value = mock_collection
-        mock_get_mongo.return_value = mock_mongo
-
-        with self.assertRaises(HTTPInternalServerError):
-            EncounterService.get_encounters(self.mock_token, self.mock_breadcrumb)
 
     @patch("src.services.encounter_service.Config.get_instance")
     @patch("src.services.encounter_service.MongoIO.get_instance")
     def test_get_encounter_handles_exception(self, mock_get_mongo, mock_get_config):
         """Test get_encounter handles database exceptions."""
-        mock_config = MagicMock()
-        mock_config.ENCOUNTER_COLLECTION_NAME = "Encounter"
+        mock_config = _make_config()
         mock_get_config.return_value = mock_config
 
         mock_mongo = MagicMock()
@@ -419,8 +431,7 @@ class TestEncounterService(unittest.TestCase):
     @patch("src.services.encounter_service.MongoIO.get_instance")
     def test_update_encounter_handles_exception(self, mock_get_mongo, mock_get_config):
         """Test update_encounter handles database exceptions."""
-        mock_config = MagicMock()
-        mock_config.ENCOUNTER_COLLECTION_NAME = "Encounter"
+        mock_config = _make_config()
         mock_get_config.return_value = mock_config
 
         mock_mongo = MagicMock()
@@ -438,8 +449,7 @@ class TestEncounterService(unittest.TestCase):
         self, mock_get_mongo, mock_get_config
     ):
         """Most recent encounter is summarized for the dashboard card."""
-        mock_config = MagicMock()
-        mock_config.ENCOUNTER_COLLECTION_NAME = "Encounter"
+        mock_config = _make_config()
         mock_get_config.return_value = mock_config
 
         mentee_id = ObjectId("507f1f77bcf86cd799439011")
@@ -485,8 +495,7 @@ class TestEncounterService(unittest.TestCase):
         self, mock_get_mongo, mock_get_config
     ):
         """Return None when the mentee has no encounters."""
-        mock_config = MagicMock()
-        mock_config.ENCOUNTER_COLLECTION_NAME = "Encounter"
+        mock_config = _make_config()
         mock_get_config.return_value = mock_config
 
         mock_mongo = MagicMock()
@@ -507,8 +516,7 @@ class TestEncounterService(unittest.TestCase):
         self, mock_get_mongo, mock_get_config
     ):
         """All of a mentee's encounters are returned, most recent first."""
-        mock_config = MagicMock()
-        mock_config.ENCOUNTER_COLLECTION_NAME = "Encounter"
+        mock_config = _make_config()
         mock_get_config.return_value = mock_config
 
         newer = {"_id": ObjectId("507f1f77bcf86cd7994390aa"), "date": "2025-03-01"}
@@ -535,8 +543,7 @@ class TestEncounterService(unittest.TestCase):
         self, mock_get_mongo, mock_get_config
     ):
         """A string mentee id is normalized to ObjectId for the direct query."""
-        mock_config = MagicMock()
-        mock_config.ENCOUNTER_COLLECTION_NAME = "Encounter"
+        mock_config = _make_config()
         mock_get_config.return_value = mock_config
 
         mock_mongo = MagicMock()
@@ -557,8 +564,7 @@ class TestEncounterService(unittest.TestCase):
         self, mock_get_mongo, mock_get_config
     ):
         """A non-ObjectId mentee id is matched as-is without raising."""
-        mock_config = MagicMock()
-        mock_config.ENCOUNTER_COLLECTION_NAME = "Encounter"
+        mock_config = _make_config()
         mock_get_config.return_value = mock_config
 
         mock_mongo = MagicMock()
@@ -571,6 +577,187 @@ class TestEncounterService(unittest.TestCase):
 
         args, kwargs = mock_mongo.get_documents.call_args
         self.assertEqual(kwargs["match"], {"mentee_id": "not-an-object-id"})
+
+    # ------------------------------------------------------------------
+    # RBAC: read (get_encounter)
+    # ------------------------------------------------------------------
+
+    @patch("src.services.encounter_service.Config.get_instance")
+    @patch("src.services.encounter_service.MongoIO.get_instance")
+    def test_get_encounter_allowed_for_mentor(self, mock_get_mongo, mock_get_config):
+        """A mentor may read any encounter (no ownership check on read)."""
+        mock_get_config.return_value = _make_config()
+
+        mock_mongo = MagicMock()
+        mock_mongo.get_document.return_value = {"_id": "123", "name": "encounter1"}
+        mock_get_mongo.return_value = mock_mongo
+
+        token = {"user_id": "mentor_user", "roles": ["mentor"]}
+        result = EncounterService.get_encounter("123", token, self.mock_breadcrumb)
+
+        self.assertEqual(result["_id"], "123")
+
+    @patch("src.services.encounter_service.Config.get_instance")
+    @patch("src.services.encounter_service.MongoIO.get_instance")
+    def test_get_encounter_allowed_for_admin(self, mock_get_mongo, mock_get_config):
+        """An admin may read any encounter."""
+        mock_get_config.return_value = _make_config()
+
+        mock_mongo = MagicMock()
+        mock_mongo.get_document.return_value = {"_id": "123", "name": "encounter1"}
+        mock_get_mongo.return_value = mock_mongo
+
+        token = {"user_id": "admin_user", "roles": ["admin"]}
+        result = EncounterService.get_encounter("123", token, self.mock_breadcrumb)
+
+        self.assertEqual(result["_id"], "123")
+
+    @patch("src.services.encounter_service.Config.get_instance")
+    @patch("src.services.encounter_service.MongoIO.get_instance")
+    def test_get_encounter_denied_for_other_role(self, mock_get_mongo, mock_get_config):
+        """A caller with neither mentor nor admin role is denied (403)."""
+        mock_get_config.return_value = _make_config()
+
+        mock_mongo = MagicMock()
+        mock_get_mongo.return_value = mock_mongo
+
+        token = {"user_id": "mentee_user", "roles": ["mentee"]}
+        with self.assertRaises(HTTPForbidden):
+            EncounterService.get_encounter("123", token, self.mock_breadcrumb)
+
+        mock_mongo.get_document.assert_not_called()
+
+    # ------------------------------------------------------------------
+    # RBAC: update (update_encounter) — owner-or-admin
+    # ------------------------------------------------------------------
+
+    @patch("src.services.encounter_service.Config.get_instance")
+    @patch("src.services.encounter_service.MongoIO.get_instance")
+    def test_update_encounter_allowed_for_admin(self, mock_get_mongo, mock_get_config):
+        """An admin may update any encounter without an ownership check."""
+        mock_get_config.return_value = _make_config()
+
+        mock_mongo = MagicMock()
+        mock_mongo.get_document.return_value = {
+            "_id": "123",
+            "mentor_id": ObjectId("507f1f77bcf86cd799439011"),
+        }
+        mock_mongo.update_document.return_value = {"_id": "123", "name": "updated"}
+        mock_get_mongo.return_value = mock_mongo
+
+        token = {"user_id": "admin_user", "roles": ["admin"]}
+        updated = EncounterService.update_encounter(
+            "123", {"name": "updated"}, token, self.mock_breadcrumb
+        )
+
+        self.assertEqual(updated["name"], "updated")
+        # Admin path must not resolve a caller profile for ownership.
+        mock_mongo.get_documents.assert_not_called()
+
+    @patch("src.services.profile_service.ProfileService.get_profile_by_token")
+    @patch("src.services.encounter_service.Config.get_instance")
+    @patch("src.services.encounter_service.MongoIO.get_instance")
+    def test_update_encounter_allowed_for_owning_mentor(
+        self, mock_get_mongo, mock_get_config, mock_get_profile_by_token
+    ):
+        """The owning mentor (Profile _id == mentor_id) may update."""
+        mock_get_config.return_value = _make_config()
+
+        mentor_object_id = ObjectId("507f1f77bcf86cd799439011")
+        mock_mongo = MagicMock()
+        # Encounter stores mentor_id as a STRING; the caller Profile _id is an
+        # ObjectId of the same value, proving the comparison is string-based.
+        mock_mongo.get_document.return_value = {
+            "_id": "123",
+            "mentor_id": str(mentor_object_id),
+        }
+        mock_mongo.update_document.return_value = {"_id": "123", "name": "updated"}
+        mock_get_mongo.return_value = mock_mongo
+        # Ownership is resolved via the ProfileService (service-to-service),
+        # not by reading the Profile collection directly.
+        mock_get_profile_by_token.return_value = {
+            "_id": mentor_object_id,
+            "name": "mike",
+        }
+
+        token = {"user_id": "mike", "roles": ["mentor"]}
+        updated = EncounterService.update_encounter(
+            "123", {"name": "updated"}, token, self.mock_breadcrumb
+        )
+
+        self.assertEqual(updated["name"], "updated")
+        mock_get_profile_by_token.assert_called_once_with(token, self.mock_breadcrumb)
+
+    @patch("src.services.profile_service.ProfileService.get_profile_by_token")
+    @patch("src.services.encounter_service.Config.get_instance")
+    @patch("src.services.encounter_service.MongoIO.get_instance")
+    def test_update_encounter_denied_for_non_owning_mentor(
+        self, mock_get_mongo, mock_get_config, mock_get_profile_by_token
+    ):
+        """A mentor who does not own the encounter is denied (403)."""
+        mock_get_config.return_value = _make_config()
+
+        mock_mongo = MagicMock()
+        mock_mongo.get_document.return_value = {
+            "_id": "123",
+            "mentor_id": ObjectId("507f1f77bcf86cd799439011"),
+        }
+        mock_get_mongo.return_value = mock_mongo
+        mock_get_profile_by_token.return_value = {
+            "_id": ObjectId("507f1f77bcf86cd7994390ff"),
+            "name": "other",
+        }
+
+        token = {"user_id": "other", "roles": ["mentor"]}
+        with self.assertRaises(HTTPForbidden):
+            EncounterService.update_encounter(
+                "123", {"name": "updated"}, token, self.mock_breadcrumb
+            )
+
+        mock_mongo.update_document.assert_not_called()
+
+    @patch("src.services.encounter_service.Config.get_instance")
+    @patch("src.services.encounter_service.MongoIO.get_instance")
+    def test_update_encounter_denied_for_other_role(
+        self, mock_get_mongo, mock_get_config
+    ):
+        """A caller with neither mentor nor admin role is denied (403)."""
+        mock_get_config.return_value = _make_config()
+
+        mock_mongo = MagicMock()
+        mock_get_mongo.return_value = mock_mongo
+
+        token = {"user_id": "mentee_user", "roles": ["mentee"]}
+        with self.assertRaises(HTTPForbidden):
+            EncounterService.update_encounter(
+                "123", {"name": "updated"}, token, self.mock_breadcrumb
+            )
+
+        mock_mongo.get_document.assert_not_called()
+        mock_mongo.update_document.assert_not_called()
+
+    @patch("src.services.encounter_service.Config.get_instance")
+    @patch("src.services.encounter_service.MongoIO.get_instance")
+    def test_update_encounter_missing_yields_not_found(
+        self, mock_get_mongo, mock_get_config
+    ):
+        """A missing encounter yields 404 before the ownership check."""
+        mock_get_config.return_value = _make_config()
+
+        mock_mongo = MagicMock()
+        mock_mongo.get_document.return_value = None
+        mock_get_mongo.return_value = mock_mongo
+
+        token = {"user_id": "mike", "roles": ["mentor"]}
+        with self.assertRaises(HTTPNotFound) as context:
+            EncounterService.update_encounter(
+                "999", {"name": "updated"}, token, self.mock_breadcrumb
+            )
+        self.assertIn("999", str(context.exception))
+
+        # 404 short-circuits before resolving ownership or updating.
+        mock_mongo.get_documents.assert_not_called()
+        mock_mongo.update_document.assert_not_called()
 
 
 if __name__ == "__main__":
