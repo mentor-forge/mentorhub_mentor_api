@@ -54,6 +54,33 @@ class ProfileService:
             raise HTTPForbidden("Mentor or admin role required to access profile data")
 
     @staticmethod
+    def get_profile_by_token(token, breadcrumb):
+        """
+        Resolve the caller's Profile from the JWT identity.
+
+        Per the domain convention, the caller's Profile is the one whose
+        ``name`` matches the token's ``user_id``. This is the canonical
+        service-to-service entry point other services use to resolve the
+        caller's Profile (e.g. the mentor id stored as ``Encounter.mentor_id``)
+        without reaching into the Profile collection themselves.
+
+        Args:
+            token: Token dictionary with ``user_id`` and roles
+            breadcrumb: Breadcrumb dictionary for audit/logging
+
+        Returns:
+            dict | None: The caller's Profile document, or ``None`` if no
+            Profile matches the token identity.
+        """
+        mongo = MongoIO.get_instance()
+        config = Config.get_instance()
+        profiles = mongo.get_documents(
+            config.PROFILE_COLLECTION_NAME,
+            match={"name": token.get("user_id")},
+        )
+        return profiles[0] if profiles else None
+
+    @staticmethod
     def get_profiles(token, breadcrumb):
         """
         Build the Mentor Dashboard for the current user.

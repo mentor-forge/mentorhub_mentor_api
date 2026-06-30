@@ -6,7 +6,6 @@ Handles RBAC checks and MongoDB operations for Encounter domain.
 
 from api_utils import MongoIO, Config
 from api_utils.flask_utils.exceptions import (
-    HTTPBadRequest,
     HTTPForbidden,
     HTTPNotFound,
     HTTPInternalServerError,
@@ -32,81 +31,50 @@ class EncounterService:
     """
 
     @staticmethod
-    def _check_permission(token, operation):
+    def _check_permission(token, operation, breadcrumb, encounter=None):
         """
         Authorize an operation for the Encounter domain.
 
-        Users granted either the ``mentor`` or ``admin`` role (per the shared
-        ``Config`` role constants) may access encounter data through this
-        service. Ownership-sensitive operations (the owner-or-admin ``PATCH``)
-        layer an additional check on top of this base authorization via
-        :meth:`_check_owner`.
+        Admins may perform any operation. Otherwise the caller must hold the
+        ``mentor`` role; for ownership-sensitive operations (where ``encounter``
+        is supplied) the caller's resolved Profile ``_id`` must equal the
+        encounter's ``mentor_id``. The caller's Profile is resolved through
+        ``ProfileService`` (service-to-service) rather than by querying the
+        profiles collection directly, keeping this service a thin pass-through.
 
         Args:
             token: Token dictionary with user_id and roles
-            operation: The operation being performed (e.g., 'read', 'create',
-                'update')
+            operation: The operation being performed (e.g., 'read', 'update')
+            breadcrumb: Breadcrumb dictionary for audit/logging
+            encounter: The target encounter document for ownership checks
 
         Raises:
-            HTTPForbidden: If the caller holds neither the ``mentor`` nor the
-                ``admin`` role
+            HTTPForbidden: If the caller lacks the required role or ownership
         """
+        # Lazy import mirrors ProfileService's own lazy import of this service,
+        # avoiding a module-load circular import.
+        from src.services.profile_service import ProfileService
+
         config = Config.get_instance()
-        allowed_roles = {config.ROLE_MENTOR, config.ROLE_ADMIN}
         roles = token.get("roles", []) or []
-        if not allowed_roles.intersection(roles):
+
+        if config.ROLE_ADMIN in roles:
+            return
+
+        if config.ROLE_MENTOR not in roles:
             raise HTTPForbidden(
                 "Mentor or admin role required to access encounter data"
             )
 
-    @staticmethod
-    def _resolve_caller_profile_id(token):
-        """
-        Resolve the caller's Profile ``_id`` from the JWT identity.
-
-        Following the domain convention (see ``ProfileService``), the caller's
-        Profile is the one whose ``name`` matches the token's ``user_id``. The
-        Profile ``_id`` is the mentor id used across the domain (e.g. stored as
-        ``Encounter.mentor_id``).
-
-        Args:
-            token: Token dictionary with ``user_id`` and roles
-
-        Returns:
-            The caller's Profile ``_id``, or ``None`` if no Profile matches.
-        """
-        mongo = MongoIO.get_instance()
-        config = Config.get_instance()
-        profiles = mongo.get_documents(
-            config.PROFILE_COLLECTION_NAME,
-            match={"name": token.get("user_id")},
-        )
-        if not profiles:
-            return None
-        return profiles[0].get("_id")
-
-    @staticmethod
-    def _check_owner(token, encounter):
-        """
-        Authorize the owning mentor for an ownership-sensitive operation.
-
-        The caller owns the encounter when their resolved Profile ``_id`` equals
-        the encounter's ``mentor_id``. Ids are compared as strings to avoid
-        ``ObjectId`` vs ``str`` mismatches.
-
-        Args:
-            token: Token dictionary with ``user_id`` and roles
-            encounter: The target encounter document (already loaded)
-
-        Raises:
-            HTTPForbidden: If the caller is not the owning mentor
-        """
-        caller_profile_id = EncounterService._resolve_caller_profile_id(token)
-        mentor_id = encounter.get("mentor_id")
-        if caller_profile_id is None or str(caller_profile_id) != str(mentor_id):
-            raise HTTPForbidden(
-                "Only the owning mentor or an admin may update this encounter"
-            )
+        if encounter is not None:
+            profile = ProfileService.get_profile_by_token(token, breadcrumb)
+            caller_profile_id = profile.get("_id") if profile else None
+            if caller_profile_id is None or str(caller_profile_id) != str(
+                encounter.get("mentor_id")
+            ):
+                raise HTTPForbidden(
+                    "Only the owning mentor or an admin may update this encounter"
+                )
 
     @staticmethod
     def _validate_update_data(data):
@@ -147,12 +115,12 @@ class EncounterService:
         """
         Create a new encounter document.
 
-        The request must include ``mentor_id``, ``mentee_id``, and ``plan_id``,
-        each a valid 24-hex ObjectId string; otherwise an ``HTTPBadRequest``
-        (400) is raised. The referenced Plan is fetched via ``PlanService`` and
-        its checklist is used to auto-fill the encounter ``agenda`` (any
-        client-supplied ``agenda`` is replaced). A missing Plan surfaces as
-        ``HTTPNotFound`` (404).
+        Field-level data quality (required reference ids, valid ObjectId
+        shapes) is delegated to the collection's ``$jsonSchema`` validator
+        rather than checked here, keeping the service a thin pass-through. The
+        referenced Plan is fetched via ``PlanService`` and its checklist is used
+        to auto-fill the encounter ``agenda`` (any client-supplied ``agenda`` is
+        replaced). A missing Plan surfaces as ``HTTPNotFound`` (404).
 
         Args:
             data: Dictionary containing encounter data
@@ -163,15 +131,7 @@ class EncounterService:
             str: The ID of the created encounter document
         """
         try:
-            EncounterService._check_permission(token, "create")
-
-            # Required reference ids must be present and valid ObjectId strings
-            for field in ("mentor_id", "mentee_id", "plan_id"):
-                value = data.get(field)
-                if not value:
-                    raise HTTPBadRequest(f"{field} is required")
-                if not ObjectId.is_valid(value):
-                    raise HTTPBadRequest(f"{field} must be a valid ObjectId")
+            EncounterService._check_permission(token, "create", breadcrumb)
 
             # Look up the referenced Plan via PlanService (no direct
             # cross-collection access). A missing Plan raises HTTPNotFound.
@@ -202,7 +162,7 @@ class EncounterService:
                 f"Created encounter { encounter_id} for user {token.get('user_id')}"
             )
             return encounter_id
-        except (HTTPForbidden, HTTPBadRequest, HTTPNotFound):
+        except (HTTPForbidden, HTTPNotFound):
             raise
         except Exception as e:
             error_msg = str(e)
@@ -245,7 +205,7 @@ class EncounterService:
             dict | None: The most recent encounter summary, or ``None`` when the
             mentee has no encounters.
         """
-        EncounterService._check_permission(token, "read")
+        EncounterService._check_permission(token, "read", breadcrumb)
 
         mongo = MongoIO.get_instance()
         config = Config.get_instance()
@@ -283,7 +243,7 @@ class EncounterService:
         Returns:
             list[dict]: The mentee's Encounter documents, most recent first.
         """
-        EncounterService._check_permission(token, "read")
+        EncounterService._check_permission(token, "read", breadcrumb)
 
         mongo = MongoIO.get_instance()
         config = Config.get_instance()
@@ -315,7 +275,7 @@ class EncounterService:
             HTTPNotFound: If encounter is not found
         """
         try:
-            EncounterService._check_permission(token, "read")
+            EncounterService._check_permission(token, "read", breadcrumb)
 
             mongo = MongoIO.get_instance()
             config = Config.get_instance()
@@ -356,13 +316,15 @@ class EncounterService:
             HTTPNotFound: If encounter is not found
         """
         try:
-            EncounterService._check_permission(token, "update")
+            # Gate on role before any datastore access so unauthorized callers
+            # never trigger a read.
+            EncounterService._check_permission(token, "update", breadcrumb)
 
             mongo = MongoIO.get_instance()
             config = Config.get_instance()
 
-            # Load the target encounter first so a missing document yields 404
-            # before the ownership check (and to read its mentor_id).
+            # Load the target encounter so a missing document yields 404 before
+            # the ownership check (and to read its mentor_id).
             encounter = mongo.get_document(
                 config.ENCOUNTER_COLLECTION_NAME, encounter_id
             )
@@ -370,9 +332,9 @@ class EncounterService:
                 raise HTTPNotFound(f"Encounter { encounter_id} not found")
 
             # Admins may update any encounter; other mentors must own it.
-            roles = token.get("roles", []) or []
-            if config.ROLE_ADMIN not in roles:
-                EncounterService._check_owner(token, encounter)
+            EncounterService._check_permission(
+                token, "update", breadcrumb, encounter=encounter
+            )
 
             EncounterService._validate_update_data(data)
 

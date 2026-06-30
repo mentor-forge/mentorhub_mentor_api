@@ -8,7 +8,6 @@ from bson import ObjectId
 from pymongo import DESCENDING
 from src.services.encounter_service import EncounterService
 from api_utils.flask_utils.exceptions import (
-    HTTPBadRequest,
     HTTPForbidden,
     HTTPNotFound,
     HTTPInternalServerError,
@@ -152,42 +151,57 @@ class TestEncounterService(unittest.TestCase):
     @patch("src.services.encounter_service.PlanService.get_plan")
     @patch("src.services.encounter_service.Config.get_instance")
     @patch("src.services.encounter_service.MongoIO.get_instance")
-    def test_create_encounter_missing_required_id_raises_bad_request(
+    def test_create_encounter_missing_id_delegates_to_mongodb(
         self, mock_get_mongo, mock_get_config, mock_get_plan
     ):
-        """Missing mentor_id/mentee_id/plan_id each raise HTTPBadRequest."""
+        """
+        The service no longer pre-validates reference ids.
+
+        A document missing a required id is forwarded to MongoDB so the
+        collection's ``$jsonSchema`` validator can reject it; the service does
+        not raise a client-side ``HTTPBadRequest`` of its own.
+        """
         mock_config = _make_config()
         mock_get_config.return_value = mock_config
-        mock_get_mongo.return_value = MagicMock()
+        mock_mongo = MagicMock()
+        mock_mongo.create_document.return_value = "123"
+        mock_get_mongo.return_value = mock_mongo
         mock_get_plan.return_value = {"_id": self.VALID_PLAN_ID, "steps": []}
 
-        for field in ("mentor_id", "mentee_id", "plan_id"):
-            data = self._valid_create_data()
-            del data[field]
-            with self.assertRaises(HTTPBadRequest) as context:
-                EncounterService.create_encounter(
-                    data, self.mock_token, self.mock_breadcrumb
-                )
-            self.assertIn(field, str(context.exception))
+        data = self._valid_create_data()
+        del data["mentor_id"]
+        result = EncounterService.create_encounter(
+            data, self.mock_token, self.mock_breadcrumb
+        )
+
+        self.assertEqual(result, "123")
+        mock_mongo.create_document.assert_called_once()
 
     @patch("src.services.encounter_service.PlanService.get_plan")
     @patch("src.services.encounter_service.Config.get_instance")
     @patch("src.services.encounter_service.MongoIO.get_instance")
-    def test_create_encounter_malformed_id_raises_bad_request(
+    def test_create_encounter_surfaces_mongodb_validation_error(
         self, mock_get_mongo, mock_get_config, mock_get_plan
     ):
-        """A non-ObjectId id raises HTTPBadRequest."""
+        """
+        A MongoDB rejection (e.g. ``$jsonSchema`` violation) is surfaced.
+
+        Data quality is owned by the datastore, so when ``create_document``
+        rejects a document the service propagates the failure rather than
+        validating ids itself.
+        """
         mock_config = _make_config()
         mock_get_config.return_value = mock_config
-        mock_get_mongo.return_value = MagicMock()
+        mock_mongo = MagicMock()
+        mock_mongo.create_document.side_effect = Exception("Document failed validation")
+        mock_get_mongo.return_value = mock_mongo
         mock_get_plan.return_value = {"_id": self.VALID_PLAN_ID, "steps": []}
 
-        data = self._valid_create_data(plan_id="not-an-object-id")
-        with self.assertRaises(HTTPBadRequest) as context:
+        data = self._valid_create_data()
+        with self.assertRaises(HTTPInternalServerError):
             EncounterService.create_encounter(
                 data, self.mock_token, self.mock_breadcrumb
             )
-        self.assertIn("plan_id", str(context.exception))
 
     @patch("src.services.encounter_service.PlanService.get_plan")
     @patch("src.services.encounter_service.Config.get_instance")
@@ -640,10 +654,11 @@ class TestEncounterService(unittest.TestCase):
         # Admin path must not resolve a caller profile for ownership.
         mock_mongo.get_documents.assert_not_called()
 
+    @patch("src.services.profile_service.ProfileService.get_profile_by_token")
     @patch("src.services.encounter_service.Config.get_instance")
     @patch("src.services.encounter_service.MongoIO.get_instance")
     def test_update_encounter_allowed_for_owning_mentor(
-        self, mock_get_mongo, mock_get_config
+        self, mock_get_mongo, mock_get_config, mock_get_profile_by_token
     ):
         """The owning mentor (Profile _id == mentor_id) may update."""
         mock_get_config.return_value = _make_config()
@@ -656,11 +671,14 @@ class TestEncounterService(unittest.TestCase):
             "_id": "123",
             "mentor_id": str(mentor_object_id),
         }
-        mock_mongo.get_documents.return_value = [
-            {"_id": mentor_object_id, "name": "mike"}
-        ]
         mock_mongo.update_document.return_value = {"_id": "123", "name": "updated"}
         mock_get_mongo.return_value = mock_mongo
+        # Ownership is resolved via the ProfileService (service-to-service),
+        # not by reading the Profile collection directly.
+        mock_get_profile_by_token.return_value = {
+            "_id": mentor_object_id,
+            "name": "mike",
+        }
 
         token = {"user_id": "mike", "roles": ["mentor"]}
         updated = EncounterService.update_encounter(
@@ -668,14 +686,13 @@ class TestEncounterService(unittest.TestCase):
         )
 
         self.assertEqual(updated["name"], "updated")
-        mock_mongo.get_documents.assert_called_once_with(
-            "Profile", match={"name": "mike"}
-        )
+        mock_get_profile_by_token.assert_called_once_with(token, self.mock_breadcrumb)
 
+    @patch("src.services.profile_service.ProfileService.get_profile_by_token")
     @patch("src.services.encounter_service.Config.get_instance")
     @patch("src.services.encounter_service.MongoIO.get_instance")
     def test_update_encounter_denied_for_non_owning_mentor(
-        self, mock_get_mongo, mock_get_config
+        self, mock_get_mongo, mock_get_config, mock_get_profile_by_token
     ):
         """A mentor who does not own the encounter is denied (403)."""
         mock_get_config.return_value = _make_config()
@@ -685,10 +702,11 @@ class TestEncounterService(unittest.TestCase):
             "_id": "123",
             "mentor_id": ObjectId("507f1f77bcf86cd799439011"),
         }
-        mock_mongo.get_documents.return_value = [
-            {"_id": ObjectId("507f1f77bcf86cd7994390ff"), "name": "other"}
-        ]
         mock_get_mongo.return_value = mock_mongo
+        mock_get_profile_by_token.return_value = {
+            "_id": ObjectId("507f1f77bcf86cd7994390ff"),
+            "name": "other",
+        }
 
         token = {"user_id": "other", "roles": ["mentor"]}
         with self.assertRaises(HTTPForbidden):
