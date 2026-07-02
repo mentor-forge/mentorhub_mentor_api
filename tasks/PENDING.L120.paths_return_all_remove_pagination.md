@@ -13,6 +13,15 @@ Always read these files before starting work:
 - `tasks/README_API.md`
 - `README.md`
 - `docs/openapi.yaml`
+- `../mentorhub_api_utils/README.md`
+
+**Prerequisites (local infra & schema source of truth)**
+
+Before starting work, start the backing database and verify the schema source of truth:
+
+- Start the backing database locally: `pipenv run db`
+- Verify the schema source of truth (trailing slash required):
+  `curl http://localhost:8383/api/configurations/json_schema/Path.yaml/latest/`
 
 Additional inputs:
 
