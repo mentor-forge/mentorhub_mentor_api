@@ -1,6 +1,6 @@
 # L140 – Patch Path requires Mentor or Admin role
 
-**Status**: Pending  
+**Status**: Shipped  
 **Type**: Feature  
 **Depends On**: L130  
 **Description**: Enforce RBAC on `PATCH /api/paths/{PathId}` so only callers whose `roles` include `mentor` or `admin` may update a Path; all other roles are denied with `HTTPForbidden` (`403`). Replace the placeholder `PathService._check_permission` no-op for the `update` operation with a real role check using the shared `Config.ROLE_MENTOR` / `Config.ROLE_ADMIN` constants. There is **no ownership check** — any mentor or admin may patch any Path. Update the OpenAPI `updatePath` operation to document the Mentor-or-Admin requirement (it currently says "requires admin role"). Chained after L130 to serialize `docs/openapi.yaml` edits.
@@ -55,4 +55,19 @@ The agent must not update files outside this list.
 
 ## Execution Notes
 
-_Reserved for the task execution agent._
+### Changes
+
+- `src/services/path_service.py` — `_check_permission(token, operation)` now enforces RBAC for the `update` operation only: `admin` (`Config.ROLE_ADMIN`) passes unconditionally; otherwise `mentor` (`Config.ROLE_MENTOR`) is required, else `HTTPForbidden("Mentor or admin role required to update path documents")`. `read`/`create` remain authenticated-only (no role check). No ownership check. `update_path` already re-raises `(HTTPForbidden, HTTPNotFound)` and preserves `_validate_update_data` + `saved`-breadcrumb behavior.
+- `docs/openapi.yaml` — `updatePath` description changed from "requires admin role" to "requires mentor or admin role". The `403` (`#/components/responses/Forbidden`) response was already present and is retained.
+- Tests — `test/services/test_path_service.py`: added `test_update_path_allowed_for_mentor`, `test_update_path_denied_for_non_privileged` (403), `test_update_path_denied_for_no_roles` (403), and set `ROLE_ADMIN`/`ROLE_MENTOR` on the existing update tests' config mocks (admin path still allowed, 404 still returned when missing). `test/routes/test_path_routes.py`: added PATCH `200` (authorized) and `403` (service-denied) route assertions. `test/e2e/test_path.py`: added a role-token minter and `@pytest.mark.e2e` PATCH allowed (admin/mentor → 200) and non-privileged denied (mentee → 403) cases.
+
+### Test results
+
+- `pipenv run test` → **196 passed, 32 deselected** (e2e).
+- `pipenv run build` → exit 0.
+- `pipenv run black` → edited files black-clean.
+- E2E / container deferred — container infra (`mh`) not available here; new cases are `@pytest.mark.e2e`. The admin+mentor default persona (`e2e_auth.get_auth_token`) covers the allowed path; the denied path uses a locally minted mentee-only token.
+
+### Note
+
+Task prose refers to `/api/paths/{PathId}`; the actual Flask route is `/api/path/{PathId}` (singular). RBAC lives in the service, so the route was not modified.

@@ -168,6 +168,8 @@ class TestPathService(unittest.TestCase):
         """Test successful update of a path document."""
         mock_config = MagicMock()
         mock_config.PATH_COLLECTION_NAME = "Path"
+        mock_config.ROLE_ADMIN = "admin"
+        mock_config.ROLE_MENTOR = "mentor"
         mock_get_config.return_value = mock_config
 
         mock_mongo = MagicMock()
@@ -200,6 +202,8 @@ class TestPathService(unittest.TestCase):
         """Test update_path raises HTTPForbidden for restricted fields."""
         mock_config = MagicMock()
         mock_config.PATH_COLLECTION_NAME = "Path"
+        mock_config.ROLE_ADMIN = "admin"
+        mock_config.ROLE_MENTOR = "mentor"
         mock_get_config.return_value = mock_config
 
         mock_mongo = MagicMock()
@@ -226,6 +230,8 @@ class TestPathService(unittest.TestCase):
         """Test update_path raises HTTPNotFound when document not found."""
         mock_config = MagicMock()
         mock_config.PATH_COLLECTION_NAME = "Path"
+        mock_config.ROLE_ADMIN = "admin"
+        mock_config.ROLE_MENTOR = "mentor"
         mock_get_config.return_value = mock_config
 
         mock_mongo = MagicMock()
@@ -246,6 +252,8 @@ class TestPathService(unittest.TestCase):
         """Test update_path uses breadcrumb directly for saved field."""
         mock_config = MagicMock()
         mock_config.PATH_COLLECTION_NAME = "Path"
+        mock_config.ROLE_ADMIN = "admin"
+        mock_config.ROLE_MENTOR = "mentor"
         mock_get_config.return_value = mock_config
 
         mock_mongo = MagicMock()
@@ -268,6 +276,66 @@ class TestPathService(unittest.TestCase):
         set_data = call_args[1]["set_data"]
         self.assertEqual(set_data["saved"], breadcrumb)
         self.assertEqual(set_data["saved"]["from_ip"], "192.168.1.1")
+
+    @patch("src.services.path_service.Config.get_instance")
+    @patch("src.services.path_service.MongoIO.get_instance")
+    def test_update_path_allowed_for_mentor(self, mock_get_mongo, mock_get_config):
+        """Test update_path is allowed for a mentor (non-admin) caller."""
+        mock_config = MagicMock()
+        mock_config.PATH_COLLECTION_NAME = "Path"
+        mock_config.ROLE_ADMIN = "admin"
+        mock_config.ROLE_MENTOR = "mentor"
+        mock_get_config.return_value = mock_config
+
+        mock_mongo = MagicMock()
+        mock_mongo.update_document.return_value = {"_id": "123", "name": "updated"}
+        mock_get_mongo.return_value = mock_mongo
+
+        token = {"user_id": "m", "roles": ["mentor"]}
+        result = PathService.update_path(
+            "123", {"name": "updated"}, token, self.mock_breadcrumb
+        )
+
+        self.assertEqual(result["name"], "updated")
+        mock_mongo.update_document.assert_called_once()
+
+    @patch("src.services.path_service.Config.get_instance")
+    @patch("src.services.path_service.MongoIO.get_instance")
+    def test_update_path_denied_for_non_privileged(
+        self, mock_get_mongo, mock_get_config
+    ):
+        """Test update_path denies a caller lacking mentor/admin (403)."""
+        mock_config = MagicMock()
+        mock_config.PATH_COLLECTION_NAME = "Path"
+        mock_config.ROLE_ADMIN = "admin"
+        mock_config.ROLE_MENTOR = "mentor"
+        mock_get_config.return_value = mock_config
+
+        mock_mongo = MagicMock()
+        mock_get_mongo.return_value = mock_mongo
+
+        token = {"user_id": "u", "roles": ["mentee"]}
+        with self.assertRaises(HTTPForbidden):
+            PathService.update_path("123", {"name": "x"}, token, self.mock_breadcrumb)
+        mock_mongo.update_document.assert_not_called()
+
+    @patch("src.services.path_service.Config.get_instance")
+    @patch("src.services.path_service.MongoIO.get_instance")
+    def test_update_path_denied_for_no_roles(self, mock_get_mongo, mock_get_config):
+        """Test update_path denies a caller with no roles claim (403)."""
+        mock_config = MagicMock()
+        mock_config.PATH_COLLECTION_NAME = "Path"
+        mock_config.ROLE_ADMIN = "admin"
+        mock_config.ROLE_MENTOR = "mentor"
+        mock_get_config.return_value = mock_config
+
+        mock_mongo = MagicMock()
+        mock_get_mongo.return_value = mock_mongo
+
+        token = {"user_id": "u"}
+        with self.assertRaises(HTTPForbidden):
+            PathService.update_path("123", {"name": "x"}, token, self.mock_breadcrumb)
+        mock_mongo.update_document.assert_not_called()
 
     @patch("src.services.path_service.Config.get_instance")
     @patch("src.services.path_service.MongoIO.get_instance")
@@ -322,6 +390,8 @@ class TestPathService(unittest.TestCase):
         """Test update_path handles database exceptions."""
         mock_config = MagicMock()
         mock_config.PATH_COLLECTION_NAME = "Path"
+        mock_config.ROLE_ADMIN = "admin"
+        mock_config.ROLE_MENTOR = "mentor"
         mock_get_config.return_value = mock_config
 
         mock_mongo = MagicMock()

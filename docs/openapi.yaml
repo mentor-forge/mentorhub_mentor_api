@@ -380,7 +380,7 @@ paths:
       tags:
         - Path
       summary: Update Path document
-      description: Update a Path document (requires admin role). Cannot update _id, created, or saved fields.
+      description: Update a Path document (requires mentor or admin role). Cannot update _id, created, or saved fields.
       operationId: updatePath
       security:
         - bearerAuth: []

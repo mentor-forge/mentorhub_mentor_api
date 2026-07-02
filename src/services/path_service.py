@@ -36,25 +36,21 @@ class PathService:
             operation: The operation being performed (e.g., 'read', 'create', 'update')
 
         Raises:
-            HTTPForbidden: If user doesn't have required permission
+            HTTPForbidden: If the user lacks the required role.
 
-        Note: This is a placeholder for future RBAC implementation.
-        For now, all operations require a valid token (authentication only).
-
-        Example RBAC implementation:
-            if operation == 'update':
-                # Update requires admin role
-                if 'admin' not in token.get('roles', []):
-                    raise HTTPForbidden("Admin role required to update path documents")
-            elif operation == 'create':
-                # Create requires staff or admin role
-                if not any(role in token.get('roles', []) for role in ['staff', 'admin']):
-                    raise HTTPForbidden("Staff or admin role required to create path documents")
-            elif operation == 'read':
-                # Read requires any authenticated user (no additional check needed)
-                pass
+        RBAC:
+            - 'update': requires the mentor or admin role.
+            - 'read'/'create': authenticated access only (no additional role check).
         """
-        pass
+        if operation == "update":
+            config = Config.get_instance()
+            roles = token.get("roles", []) or []
+            if config.ROLE_ADMIN in roles:
+                return
+            if config.ROLE_MENTOR not in roles:
+                raise HTTPForbidden(
+                    "Mentor or admin role required to update path documents"
+                )
 
     @staticmethod
     def _validate_update_data(data):

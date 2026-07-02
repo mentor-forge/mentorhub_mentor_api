@@ -186,6 +186,49 @@ class TestPathRoutes(unittest.TestCase):
         self.assertEqual(response.status_code, 401)
         self.assertIn("error", response.json)
 
+    @patch("src.routes.path_routes.create_flask_token")
+    @patch("src.routes.path_routes.create_flask_breadcrumb")
+    @patch("src.routes.path_routes.PathService.update_path")
+    def test_update_path_success(
+        self,
+        mock_update_path,
+        mock_create_breadcrumb,
+        mock_create_token,
+    ):
+        """Test PATCH /api/path/<id> returns 200 for an authorized caller."""
+        mock_create_token.return_value = self.mock_token
+        mock_create_breadcrumb.return_value = self.mock_breadcrumb
+        mock_update_path.return_value = {"_id": "123", "name": "updated"}
+
+        response = self.client.patch("/api/path/123", json={"name": "updated"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json["name"], "updated")
+        mock_update_path.assert_called_once()
+
+    @patch("src.routes.path_routes.create_flask_token")
+    @patch("src.routes.path_routes.create_flask_breadcrumb")
+    @patch("src.routes.path_routes.PathService.update_path")
+    def test_update_path_forbidden(
+        self,
+        mock_update_path,
+        mock_create_breadcrumb,
+        mock_create_token,
+    ):
+        """Test PATCH /api/path/<id> returns 403 when the service denies it."""
+        from api_utils.flask_utils.exceptions import HTTPForbidden
+
+        mock_create_token.return_value = {"user_id": "u", "roles": ["mentee"]}
+        mock_create_breadcrumb.return_value = self.mock_breadcrumb
+        mock_update_path.side_effect = HTTPForbidden(
+            "Mentor or admin role required to update path documents"
+        )
+
+        response = self.client.patch("/api/path/123", json={"name": "x"})
+
+        self.assertEqual(response.status_code, 403)
+        self.assertIn("error", response.json)
+
 
 if __name__ == "__main__":
     unittest.main()
