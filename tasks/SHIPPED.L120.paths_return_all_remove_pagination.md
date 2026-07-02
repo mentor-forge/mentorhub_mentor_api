@@ -1,6 +1,6 @@
 # L120 – Get Paths returns all documents (remove pagination / infinite scroll)
 
-**Status**: Pending  
+**Status**: Shipped  
 **Type**: Feature  
 **Depends On**: none  
 **Description**: Change `GET /api/paths` so it always returns every matching Path document as a plain JSON array, and drop the infinite-scroll contract entirely. Remove the `after_id`, `limit`, `sort_by`, and `order` query parameters and the `{items, limit, has_more, next_cursor}` envelope from the route, the `PathService.get_paths` service, and the OpenAPI spec. The optional `?name=` filter is retained. Sorting becomes a fixed server-side sort by `name` ascending (no client-selectable sort), consistent with a full-list read.
@@ -56,4 +56,20 @@ The agent must not update files outside this list.
 
 ## Execution Notes
 
-_Reserved for the task execution agent._
+### Changes
+
+- `src/services/path_service.py` — `get_paths(token, breadcrumb, name=None)` now reads the full collection via `MongoIO.get_documents(PATH_COLLECTION_NAME, match=..., sort_by=[("name", ASCENDING)])` and returns the list. Optional `name` applies a case-insensitive partial match (`{"$regex": name, "$options": "i"}`). Removed the `execute_infinite_scroll_query` import, the `ALLOWED_SORT_FIELDS` constant, and the now-unused `HTTPBadRequest` import; added `from pymongo import ASCENDING`.
+- `src/routes/path_routes.py` — `GET /api/path` view now reads only `name` and returns `jsonify(list)`; docstring updated. The route path is unchanged (`/api/path`, registered in `server.py`).
+- `docs/openapi.yaml` — `getPaths` now documents "Return all Path documents, sorted by name ascending"; removed the `after_id`/`limit`/`sort_by`/`order` query params and the `400` response; `200` schema is now `type: array` of `#/components/schemas/Path`.
+- Tests — `test/services/test_path_service.py`: replaced the six scroll/pagination tests with `test_get_paths_returns_all` and `test_get_paths_name_filter`, and repointed the exception test at `get_documents`. `test/routes/test_path_routes.py`: both list tests now assert a JSON array and the `name=`-only call signature. `test/e2e/test_path.py`: list e2e cases now assert a JSON array.
+
+### Test results
+
+- `pipenv run test` → **191 passed, 30 deselected** (e2e).
+- `pipenv run build` → exit 0.
+- `pipenv run black` → the 5 edited files reformatted and black-clean; repo-wide pre-existing lint debt left untouched.
+- E2E / container (`pipenv run db`/`dev`/`e2e`/`api`) deferred — container infra (`mh`) not available in this environment; updated cases are marked `@pytest.mark.e2e`.
+
+### Note
+
+Task prose refers to `/api/paths`; the actual Flask route is `/api/path` (singular, per `server.py` and the OpenAPI paths). No route rename was performed (not in Outputs); only the response shape and query params changed.
