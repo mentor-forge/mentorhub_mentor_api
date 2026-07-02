@@ -1,6 +1,6 @@
 # L130 – Get Path by id: OpenAPI-only alignment
 
-**Status**: Pending  
+**Status**: Shipped  
 **Type**: Feature  
 **Depends On**: L120  
 **Description**: Align the `GET /api/paths/{PathId}` operation in `docs/openapi.yaml` with the finalized Path read contract. This is an **OpenAPI-only change** — no route, service, or test code changes. The endpoint remains readable by any authenticated caller (no role restriction on single-document reads), so the operation must document the read contract accurately and consistently with the other Path operations. Chained after L120 solely to serialize edits to `docs/openapi.yaml` and avoid merge conflicts.
@@ -45,4 +45,13 @@ The agent must not update files outside this list.
 
 ## Execution Notes
 
-_Reserved for the task execution agent._
+### Changes
+
+- `docs/openapi.yaml` — `getPath` (`GET /api/path/{PathId}`) only. Description now reads "Retrieve a specific Path document by its PathId. Readable by any authenticated caller (no role restriction)." and the `200` description was clarified to "Successfully retrieved the Path document". Responses remain `200`/`401`/`404`/`500` with **no `403`** (reads are not role-restricted); `200` still references `#/components/schemas/Path` and the `PathId` path parameter is unchanged.
+- No route/service/test code changed (OpenAPI-only task).
+
+### Test results
+
+- OpenAPI parses as valid YAML; `getPath` responses = `['200','401','404','500']` (verified via `yaml.safe_load`).
+- `pipenv run test` → **191 passed, 30 deselected** (unchanged; no code touched).
+- Packaging/explorer check (`pipenv run api` + curl `/docs/openapi.yaml`) deferred — container infra not available in this environment.

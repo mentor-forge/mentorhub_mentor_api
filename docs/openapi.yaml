@@ -350,7 +350,7 @@ paths:
       tags:
         - Path
       summary: Get Path by PathId
-      description: Retrieve a specific Path document by its PathId
+      description: Retrieve a specific Path document by its PathId. Readable by any authenticated caller (no role restriction).
       operationId: getPath
       security:
         - bearerAuth: []
@@ -365,7 +365,7 @@ paths:
             example: 507f1f77bcf86cd799439011
       responses:
         '200':
-          description: Successfully retrieved Path
+          description: Successfully retrieved the Path document
           content:
             application/json:
               schema:
