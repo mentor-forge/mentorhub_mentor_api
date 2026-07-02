@@ -13,15 +13,6 @@ Always read these files before starting work:
 - `tasks/README_API.md`
 - `README.md`
 - `docs/openapi.yaml` (after L130)
-- `../mentorhub_api_utils/README.md`
-
-**Prerequisites (local infra & schema source of truth)**
-
-Before starting work, start the backing database and verify the schema source of truth:
-
-- Start the backing database locally: `pipenv run db`
-- Verify the schema source of truth (trailing slash required):
-  `curl http://localhost:8383/api/configurations/json_schema/Path.yaml/latest/`
 
 Additional inputs:
 
@@ -36,7 +27,7 @@ Additional inputs:
 - `PathService._check_permission(token, 'update')` authorizes callers whose `roles` include `Config.ROLE_ADMIN` **or** `Config.ROLE_MENTOR`; every other role (and no-role) is denied with `HTTPForbidden` (`403`). Use the shared config role constants, matching `EncounterService`.
 - No ownership check is performed for Path updates — any mentor or admin may patch any Path.
 - `update_path` continues to raise `HTTPNotFound` (`404`) for a missing Path and keeps `_validate_update_data` restrictions (`_id`, `created`, `saved`) and the `saved`-breadcrumb behavior; `HTTPForbidden` and `HTTPNotFound` propagate (not wrapped to `500`).
-- Behavior of `create_path` and the read paths is unchanged (this task only wires the `update` branch of `_check_permission`; the `read`/`create` branches keep their current behavior).
+- Behavior of `create_path` and the read paths is unchanged (this task only wires the `update` branch of `_check_permission Russo`; the `read`/`create` branches keep their current behavior).
 - `docs/openapi.yaml` `updatePath` description states the Mentor-or-Admin requirement and includes a `403` (`#/components/responses/Forbidden`) response.
 
 ## Testing Expectations
