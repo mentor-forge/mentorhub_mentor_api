@@ -20,8 +20,8 @@ Always read these files before starting work:
 Before starting work, start the backing database and verify the schema source of truth:
 
 - Start the backing database locally: `pipenv run db`
-- Verify the schema source of truth (trailing slash required):
-  `curl http://localhost:8383/api/configurations/json_schema/Path.yaml/latest/`
+- Verify the schema source of truth:
+  `curl http://localhost:8383/api/configurations/json_schema/Path.yaml/latest`
 
 Additional inputs:
 
