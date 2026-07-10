@@ -134,9 +134,25 @@ def test_create_encounter_missing_required_field():
     """POST /api/encounter returns 400 when a required reference id is missing."""
     token = get_auth_token()
     headers = {"Authorization": f"Bearer {token}"}
+
+    # Use a real, active plan so the plan-existence check passes and the request
+    # reaches the $jsonSchema validator, which rejects the missing required
+    # ``mentee_id`` (data quality is enforced by the database, not the service).
+    plan_response = requests.post(
+        f"{BASE_URL}/api/plan",
+        headers=headers,
+        json={
+            "name": "e2e-encounter-missing-field-plan",
+            "description": "E2E plan for missing required field validation",
+            "checklist": ["review goals"],
+        },
+    )
+    assert plan_response.status_code == 201, _err(plan_response, 201)
+    plan_id = plan_response.json()["_id"]
+
     data = {
-        "mentee_id": "507f1f77bcf86cd799439012",
-        "plan_id": "507f1f77bcf86cd799439013",
+        "mentor_id": "507f1f77bcf86cd799439011",
+        "plan_id": plan_id,
         "status": "active",
     }
 
