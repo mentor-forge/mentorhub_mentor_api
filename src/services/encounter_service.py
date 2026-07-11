@@ -7,7 +7,6 @@ Handles RBAC checks and MongoDB operations for Encounter domain.
 from api_utils import MongoIO, Config
 from api_utils.flask_utils.exceptions import (
     HTTPForbidden,
-    HTTPBadRequest,
     HTTPNotFound,
     HTTPInternalServerError,
 )
@@ -15,7 +14,6 @@ from api_utils.mongo_utils import encode_document
 from bson import ObjectId
 from bson.errors import InvalidId
 from pymongo import DESCENDING
-from pymongo.errors import OperationFailure, WriteError
 from src.services.plan_service import PlanService
 import logging
 
@@ -159,21 +157,12 @@ class EncounterService:
 
             mongo = MongoIO.get_instance()
             config = Config.get_instance()
-            try:
-                encounter_id = mongo.create_document(
-                    config.ENCOUNTER_COLLECTION_NAME, data
-                )
-            except (WriteError, OperationFailure) as e:
-                # A $jsonSchema validation failure (e.g. a missing required
-                # reference id) surfaces as a pymongo WriteError/OperationFailure.
-                # Surface it as a 400 so data-quality enforcement stays in the
-                # database rather than being duplicated as manual checks here.
-                raise HTTPBadRequest(f"Invalid encounter document: {e}")
+            encounter_id = mongo.create_document(config.ENCOUNTER_COLLECTION_NAME, data)
             logger.info(
                 f"Created encounter { encounter_id} for user {token.get('user_id')}"
             )
             return encounter_id
-        except (HTTPForbidden, HTTPBadRequest, HTTPNotFound):
+        except (HTTPForbidden, HTTPNotFound):
             raise
         except Exception as e:
             error_msg = str(e)
