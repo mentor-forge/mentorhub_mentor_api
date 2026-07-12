@@ -175,8 +175,8 @@ def test_create_encounter_with_seeded_profile_ids():
 
     data = {
         # Seeded Profile ids (see Profile test data): marti (mentor), mary (mentee).
-        "mentor_id": "A00000000000000000000006",
-        "mentee_id": "A00000000000000000000004",
+        "mentor_id": "a00000000000000000000006",
+        "mentee_id": "a00000000000000000000004",
         "plan_id": plan_id,
         "status": "active",
         "summary": "E2E encounter with seeded profile ids",
@@ -188,8 +188,8 @@ def test_create_encounter_with_seeded_profile_ids():
 
     body = response.json()
     assert "_id" in body, "Response missing '_id' key"
-    assert body["mentor_id"] == "A00000000000000000000006"
-    assert body["mentee_id"] == "A00000000000000000000004"
+    assert body["mentor_id"] == "a00000000000000000000006"
+    assert body["mentee_id"] == "a00000000000000000000004"
 
 
 @pytest.mark.e2e
