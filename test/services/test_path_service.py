@@ -1,12 +1,12 @@
 """
 Unit tests for Path service.
 """
+
 import unittest
 from unittest.mock import patch, MagicMock
 from bson import ObjectId
 from src.services.path_service import PathService
 from api_utils.flask_utils.exceptions import (
-    HTTPBadRequest,
     HTTPForbidden,
     HTTPNotFound,
     HTTPInternalServerError,
@@ -44,9 +44,7 @@ class TestPathService(unittest.TestCase):
             "status": "active",
         }
 
-        path_id = PathService.create_path(
-            data, self.mock_token, self.mock_breadcrumb
-        )
+        path_id = PathService.create_path(data, self.mock_token, self.mock_breadcrumb)
 
         self.assertEqual(path_id, "123")
         mock_mongo.create_document.assert_called_once()
@@ -71,9 +69,7 @@ class TestPathService(unittest.TestCase):
 
         data = {"_id": "should-be-removed", "name": "test"}
 
-        PathService.create_path(
-            data, self.mock_token, self.mock_breadcrumb
-        )
+        PathService.create_path(data, self.mock_token, self.mock_breadcrumb)
 
         call_args = mock_mongo.create_document.call_args
         created_data = call_args[0][1]
@@ -81,131 +77,53 @@ class TestPathService(unittest.TestCase):
 
     @patch("src.services.path_service.Config.get_instance")
     @patch("src.services.path_service.MongoIO.get_instance")
-    def test_get_paths_first_batch(self, mock_get_mongo, mock_get_config):
-        """Test successful retrieval of first batch (no cursor)."""
+    def test_get_paths_returns_all(self, mock_get_mongo, mock_get_config):
+        """Test get_paths returns all documents as a list, sorted by name asc."""
         mock_config = MagicMock()
         mock_config.PATH_COLLECTION_NAME = "Path"
         mock_get_config.return_value = mock_config
 
-        mock_collection = MagicMock()
-        mock_cursor = MagicMock()
-        mock_collection.find.return_value = mock_cursor
-        mock_cursor.sort.return_value = mock_cursor
-        mock_cursor.limit.return_value = mock_cursor
-        mock_cursor.__iter__ = lambda self: iter(
-            [
-                {"_id": ObjectId("507f1f77bcf86cd799439011"), "name": "path1"},
-                {"_id": ObjectId("507f1f77bcf86cd799439012"), "name": "path2"},
-            ]
+        docs = [
+            {"_id": ObjectId("507f1f77bcf86cd799439011"), "name": "path1"},
+            {"_id": ObjectId("507f1f77bcf86cd799439012"), "name": "path2"},
+        ]
+        mock_mongo = MagicMock()
+        mock_mongo.get_documents.return_value = docs
+        mock_get_mongo.return_value = mock_mongo
+
+        result = PathService.get_paths(self.mock_token, self.mock_breadcrumb)
+
+        self.assertIsInstance(result, list)
+        self.assertEqual(len(result), 2)
+        mock_mongo.get_documents.assert_called_once_with(
+            "Path", match={}, sort_by=[("name", 1)]
         )
 
+    @patch("src.services.path_service.Config.get_instance")
+    @patch("src.services.path_service.MongoIO.get_instance")
+    def test_get_paths_name_filter(self, mock_get_mongo, mock_get_config):
+        """Test get_paths applies a case-insensitive partial name filter."""
+        mock_config = MagicMock()
+        mock_config.PATH_COLLECTION_NAME = "Path"
+        mock_get_config.return_value = mock_config
+
         mock_mongo = MagicMock()
-        mock_mongo.get_collection.return_value = mock_collection
+        mock_mongo.get_documents.return_value = [
+            {"_id": ObjectId("507f1f77bcf86cd799439011"), "name": "test-path"}
+        ]
         mock_get_mongo.return_value = mock_mongo
 
         result = PathService.get_paths(
-            self.mock_token, self.mock_breadcrumb, limit=10
+            self.mock_token, self.mock_breadcrumb, name="test"
         )
 
-        self.assertIn("items", result)
-        self.assertIn("limit", result)
-        self.assertIn("has_more", result)
-        self.assertIn("next_cursor", result)
-        self.assertEqual(len(result["items"]), 2)
-        self.assertEqual(result["limit"], 10)
-        self.assertFalse(result["has_more"])
-        self.assertIsNone(result["next_cursor"])
-
-    @patch("src.services.path_service.Config.get_instance")
-    @patch("src.services.path_service.MongoIO.get_instance")
-    def test_get_paths_invalid_limit_too_small(self, mock_get_mongo, mock_get_config):
-        """Test get_paths raises HTTPBadRequest for limit < 1."""
-        mock_config = MagicMock()
-        mock_config.PATH_COLLECTION_NAME = "Path"
-        mock_get_config.return_value = mock_config
-        mock_mongo = MagicMock()
-        mock_mongo.get_collection.return_value = MagicMock()
-        mock_get_mongo.return_value = mock_mongo
-
-        with self.assertRaises(HTTPBadRequest) as context:
-            PathService.get_paths(
-                self.mock_token, self.mock_breadcrumb, limit=0
-            )
-        self.assertIn("limit must be >= 1", str(context.exception))
-
-    @patch("src.services.path_service.Config.get_instance")
-    @patch("src.services.path_service.MongoIO.get_instance")
-    def test_get_paths_invalid_limit_too_large(self, mock_get_mongo, mock_get_config):
-        """Test get_paths raises HTTPBadRequest for limit > 100."""
-        mock_config = MagicMock()
-        mock_config.PATH_COLLECTION_NAME = "Path"
-        mock_get_config.return_value = mock_config
-        mock_mongo = MagicMock()
-        mock_mongo.get_collection.return_value = MagicMock()
-        mock_get_mongo.return_value = mock_mongo
-
-        with self.assertRaises(HTTPBadRequest) as context:
-            PathService.get_paths(
-                self.mock_token, self.mock_breadcrumb, limit=101
-            )
-        self.assertIn("limit must be <= 100", str(context.exception))
-
-    @patch("src.services.path_service.Config.get_instance")
-    @patch("src.services.path_service.MongoIO.get_instance")
-    def test_get_paths_invalid_sort_by(self, mock_get_mongo, mock_get_config):
-        """Test get_paths raises HTTPBadRequest for invalid sort_by."""
-        mock_config = MagicMock()
-        mock_config.PATH_COLLECTION_NAME = "Path"
-        mock_get_config.return_value = mock_config
-        mock_mongo = MagicMock()
-        mock_mongo.get_collection.return_value = MagicMock()
-        mock_get_mongo.return_value = mock_mongo
-
-        with self.assertRaises(HTTPBadRequest) as context:
-            PathService.get_paths(
-                self.mock_token,
-                self.mock_breadcrumb,
-                sort_by="invalid_field",
-            )
-        self.assertIn("sort_by must be one of", str(context.exception))
-
-    @patch("src.services.path_service.Config.get_instance")
-    @patch("src.services.path_service.MongoIO.get_instance")
-    def test_get_paths_invalid_order(self, mock_get_mongo, mock_get_config):
-        """Test get_paths raises HTTPBadRequest for invalid order."""
-        mock_config = MagicMock()
-        mock_config.PATH_COLLECTION_NAME = "Path"
-        mock_get_config.return_value = mock_config
-        mock_mongo = MagicMock()
-        mock_mongo.get_collection.return_value = MagicMock()
-        mock_get_mongo.return_value = mock_mongo
-
-        with self.assertRaises(HTTPBadRequest) as context:
-            PathService.get_paths(
-                self.mock_token,
-                self.mock_breadcrumb,
-                order="invalid",
-            )
-        self.assertIn("order must be 'asc' or 'desc'", str(context.exception))
-
-    @patch("src.services.path_service.Config.get_instance")
-    @patch("src.services.path_service.MongoIO.get_instance")
-    def test_get_paths_invalid_after_id(self, mock_get_mongo, mock_get_config):
-        """Test get_paths raises HTTPBadRequest for invalid after_id."""
-        mock_config = MagicMock()
-        mock_config.PATH_COLLECTION_NAME = "Path"
-        mock_get_config.return_value = mock_config
-        mock_mongo = MagicMock()
-        mock_mongo.get_collection.return_value = MagicMock()
-        mock_get_mongo.return_value = mock_mongo
-
-        with self.assertRaises(HTTPBadRequest) as context:
-            PathService.get_paths(
-                self.mock_token,
-                self.mock_breadcrumb,
-                after_id="invalid",
-            )
-        self.assertIn("after_id must be a valid MongoDB ObjectId", str(context.exception))
+        self.assertIsInstance(result, list)
+        self.assertEqual(len(result), 1)
+        mock_mongo.get_documents.assert_called_once_with(
+            "Path",
+            match={"name": {"$regex": "test", "$options": "i"}},
+            sort_by=[("name", 1)],
+        )
 
     @patch("src.services.path_service.Config.get_instance")
     @patch("src.services.path_service.MongoIO.get_instance")
@@ -222,9 +140,7 @@ class TestPathService(unittest.TestCase):
         }
         mock_get_mongo.return_value = mock_mongo
 
-        result = PathService.get_path(
-            "123", self.mock_token, self.mock_breadcrumb
-        )
+        result = PathService.get_path("123", self.mock_token, self.mock_breadcrumb)
 
         self.assertIsNotNone(result)
         self.assertEqual(result["_id"], "123")
@@ -243,9 +159,7 @@ class TestPathService(unittest.TestCase):
         mock_get_mongo.return_value = mock_mongo
 
         with self.assertRaises(HTTPNotFound) as context:
-            PathService.get_path(
-                "999", self.mock_token, self.mock_breadcrumb
-            )
+            PathService.get_path("999", self.mock_token, self.mock_breadcrumb)
         self.assertIn("999", str(context.exception))
 
     @patch("src.services.path_service.Config.get_instance")
@@ -254,6 +168,8 @@ class TestPathService(unittest.TestCase):
         """Test successful update of a path document."""
         mock_config = MagicMock()
         mock_config.PATH_COLLECTION_NAME = "Path"
+        mock_config.ROLE_ADMIN = "admin"
+        mock_config.ROLE_MENTOR = "mentor"
         mock_get_config.return_value = mock_config
 
         mock_mongo = MagicMock()
@@ -286,6 +202,8 @@ class TestPathService(unittest.TestCase):
         """Test update_path raises HTTPForbidden for restricted fields."""
         mock_config = MagicMock()
         mock_config.PATH_COLLECTION_NAME = "Path"
+        mock_config.ROLE_ADMIN = "admin"
+        mock_config.ROLE_MENTOR = "mentor"
         mock_get_config.return_value = mock_config
 
         mock_mongo = MagicMock()
@@ -293,23 +211,17 @@ class TestPathService(unittest.TestCase):
 
         data = {"_id": "999", "name": "Updated"}
         with self.assertRaises(HTTPForbidden) as context:
-            PathService.update_path(
-                "123", data, self.mock_token, self.mock_breadcrumb
-            )
+            PathService.update_path("123", data, self.mock_token, self.mock_breadcrumb)
         self.assertIn("_id", str(context.exception))
 
         data = {"created": {"at_time": "2024-01-01T00:00:00Z"}, "name": "Updated"}
         with self.assertRaises(HTTPForbidden) as context:
-            PathService.update_path(
-                "123", data, self.mock_token, self.mock_breadcrumb
-            )
+            PathService.update_path("123", data, self.mock_token, self.mock_breadcrumb)
         self.assertIn("created", str(context.exception))
 
         data = {"saved": {"at_time": "2024-01-01T00:00:00Z"}, "name": "Updated"}
         with self.assertRaises(HTTPForbidden) as context:
-            PathService.update_path(
-                "123", data, self.mock_token, self.mock_breadcrumb
-            )
+            PathService.update_path("123", data, self.mock_token, self.mock_breadcrumb)
         self.assertIn("saved", str(context.exception))
 
     @patch("src.services.path_service.Config.get_instance")
@@ -318,6 +230,8 @@ class TestPathService(unittest.TestCase):
         """Test update_path raises HTTPNotFound when document not found."""
         mock_config = MagicMock()
         mock_config.PATH_COLLECTION_NAME = "Path"
+        mock_config.ROLE_ADMIN = "admin"
+        mock_config.ROLE_MENTOR = "mentor"
         mock_get_config.return_value = mock_config
 
         mock_mongo = MagicMock()
@@ -338,6 +252,8 @@ class TestPathService(unittest.TestCase):
         """Test update_path uses breadcrumb directly for saved field."""
         mock_config = MagicMock()
         mock_config.PATH_COLLECTION_NAME = "Path"
+        mock_config.ROLE_ADMIN = "admin"
+        mock_config.ROLE_MENTOR = "mentor"
         mock_get_config.return_value = mock_config
 
         mock_mongo = MagicMock()
@@ -363,9 +279,67 @@ class TestPathService(unittest.TestCase):
 
     @patch("src.services.path_service.Config.get_instance")
     @patch("src.services.path_service.MongoIO.get_instance")
-    def test_create_path_handles_exception(
+    def test_update_path_allowed_for_mentor(self, mock_get_mongo, mock_get_config):
+        """Test update_path is allowed for a mentor (non-admin) caller."""
+        mock_config = MagicMock()
+        mock_config.PATH_COLLECTION_NAME = "Path"
+        mock_config.ROLE_ADMIN = "admin"
+        mock_config.ROLE_MENTOR = "mentor"
+        mock_get_config.return_value = mock_config
+
+        mock_mongo = MagicMock()
+        mock_mongo.update_document.return_value = {"_id": "123", "name": "updated"}
+        mock_get_mongo.return_value = mock_mongo
+
+        token = {"user_id": "m", "roles": ["mentor"]}
+        result = PathService.update_path(
+            "123", {"name": "updated"}, token, self.mock_breadcrumb
+        )
+
+        self.assertEqual(result["name"], "updated")
+        mock_mongo.update_document.assert_called_once()
+
+    @patch("src.services.path_service.Config.get_instance")
+    @patch("src.services.path_service.MongoIO.get_instance")
+    def test_update_path_denied_for_non_privileged(
         self, mock_get_mongo, mock_get_config
     ):
+        """Test update_path denies a caller lacking mentor/admin (403)."""
+        mock_config = MagicMock()
+        mock_config.PATH_COLLECTION_NAME = "Path"
+        mock_config.ROLE_ADMIN = "admin"
+        mock_config.ROLE_MENTOR = "mentor"
+        mock_get_config.return_value = mock_config
+
+        mock_mongo = MagicMock()
+        mock_get_mongo.return_value = mock_mongo
+
+        token = {"user_id": "u", "roles": ["mentee"]}
+        with self.assertRaises(HTTPForbidden):
+            PathService.update_path("123", {"name": "x"}, token, self.mock_breadcrumb)
+        mock_mongo.update_document.assert_not_called()
+
+    @patch("src.services.path_service.Config.get_instance")
+    @patch("src.services.path_service.MongoIO.get_instance")
+    def test_update_path_denied_for_no_roles(self, mock_get_mongo, mock_get_config):
+        """Test update_path denies a caller with no roles claim (403)."""
+        mock_config = MagicMock()
+        mock_config.PATH_COLLECTION_NAME = "Path"
+        mock_config.ROLE_ADMIN = "admin"
+        mock_config.ROLE_MENTOR = "mentor"
+        mock_get_config.return_value = mock_config
+
+        mock_mongo = MagicMock()
+        mock_get_mongo.return_value = mock_mongo
+
+        token = {"user_id": "u"}
+        with self.assertRaises(HTTPForbidden):
+            PathService.update_path("123", {"name": "x"}, token, self.mock_breadcrumb)
+        mock_mongo.update_document.assert_not_called()
+
+    @patch("src.services.path_service.Config.get_instance")
+    @patch("src.services.path_service.MongoIO.get_instance")
+    def test_create_path_handles_exception(self, mock_get_mongo, mock_get_config):
         """Test create_path handles database exceptions."""
         mock_config = MagicMock()
         mock_config.PATH_COLLECTION_NAME = "Path"
@@ -382,31 +356,22 @@ class TestPathService(unittest.TestCase):
 
     @patch("src.services.path_service.Config.get_instance")
     @patch("src.services.path_service.MongoIO.get_instance")
-    def test_get_paths_handles_exception(
-        self, mock_get_mongo, mock_get_config
-    ):
+    def test_get_paths_handles_exception(self, mock_get_mongo, mock_get_config):
         """Test get_paths handles database exceptions."""
         mock_config = MagicMock()
         mock_config.PATH_COLLECTION_NAME = "Path"
         mock_get_config.return_value = mock_config
 
-        mock_collection = MagicMock()
-        mock_collection.find.side_effect = Exception("Database error")
-
         mock_mongo = MagicMock()
-        mock_mongo.get_collection.return_value = mock_collection
+        mock_mongo.get_documents.side_effect = Exception("Database error")
         mock_get_mongo.return_value = mock_mongo
 
         with self.assertRaises(HTTPInternalServerError):
-            PathService.get_paths(
-                self.mock_token, self.mock_breadcrumb
-            )
+            PathService.get_paths(self.mock_token, self.mock_breadcrumb)
 
     @patch("src.services.path_service.Config.get_instance")
     @patch("src.services.path_service.MongoIO.get_instance")
-    def test_get_path_handles_exception(
-        self, mock_get_mongo, mock_get_config
-    ):
+    def test_get_path_handles_exception(self, mock_get_mongo, mock_get_config):
         """Test get_path handles database exceptions."""
         mock_config = MagicMock()
         mock_config.PATH_COLLECTION_NAME = "Path"
@@ -417,18 +382,16 @@ class TestPathService(unittest.TestCase):
         mock_get_mongo.return_value = mock_mongo
 
         with self.assertRaises(HTTPInternalServerError):
-            PathService.get_path(
-                "123", self.mock_token, self.mock_breadcrumb
-            )
+            PathService.get_path("123", self.mock_token, self.mock_breadcrumb)
 
     @patch("src.services.path_service.Config.get_instance")
     @patch("src.services.path_service.MongoIO.get_instance")
-    def test_update_path_handles_exception(
-        self, mock_get_mongo, mock_get_config
-    ):
+    def test_update_path_handles_exception(self, mock_get_mongo, mock_get_config):
         """Test update_path handles database exceptions."""
         mock_config = MagicMock()
         mock_config.PATH_COLLECTION_NAME = "Path"
+        mock_config.ROLE_ADMIN = "admin"
+        mock_config.ROLE_MENTOR = "mentor"
         mock_get_config.return_value = mock_config
 
         mock_mongo = MagicMock()

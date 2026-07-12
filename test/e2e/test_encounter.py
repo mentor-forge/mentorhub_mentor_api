@@ -130,18 +130,66 @@ def test_create_encounter_from_plan_endpoint():
 
 
 @pytest.mark.e2e
-def test_create_encounter_missing_required_field():
-    """POST /api/encounter returns 400 when a required reference id is missing."""
+def test_create_encounter_unknown_plan_returns_404():
+    """POST /api/encounter returns 404 when the referenced Plan does not exist.
+
+    The create path resolves the referenced Plan before persisting; a
+    well-formed but unknown ``plan_id`` surfaces as ``HTTPNotFound`` (404).
+    """
     token = get_auth_token()
     headers = {"Authorization": f"Bearer {token}"}
     data = {
+        "mentor_id": "507f1f77bcf86cd799439011",
         "mentee_id": "507f1f77bcf86cd799439012",
+        # Valid ObjectId shape, but no such Plan exists in the seeded database.
         "plan_id": "507f1f77bcf86cd799439013",
         "status": "active",
     }
 
     response = requests.post(f"{BASE_URL}/api/encounter", headers=headers, json=data)
-    assert response.status_code == 400, _err(response, 400)
+    assert response.status_code == 404, _err(response, 404)
+
+
+@pytest.mark.e2e
+def test_create_encounter_with_seeded_profile_ids():
+    """POST /api/encounter succeeds with a real Plan and seeded Profile ids.
+
+    ``mentor_id`` and ``mentee_id`` use Profile documents loaded into the
+    database on startup (``marti`` and ``mary``); ``plan_id`` is created via
+    the Plan endpoint so every reference id is valid.
+    """
+    token = get_auth_token()
+    headers = {"Authorization": f"Bearer {token}"}
+
+    plan_response = requests.post(
+        f"{BASE_URL}/api/plan",
+        headers=headers,
+        json={
+            "name": "e2e-encounter-valid-ids-plan",
+            "description": "E2E plan for valid reference id create",
+            "checklist": ["review goals"],
+        },
+    )
+    assert plan_response.status_code == 201, _err(plan_response, 201)
+    plan_id = plan_response.json()["_id"]
+
+    data = {
+        # Seeded Profile ids (see Profile test data): marti (mentor), mary (mentee).
+        "mentor_id": "a00000000000000000000006",
+        "mentee_id": "a00000000000000000000004",
+        "plan_id": plan_id,
+        "status": "active",
+        "summary": "E2E encounter with seeded profile ids",
+        "tldr": "E2E seeded ids",
+    }
+
+    response = requests.post(f"{BASE_URL}/api/encounter", headers=headers, json=data)
+    assert response.status_code == 201, _err(response, 201)
+
+    body = response.json()
+    assert "_id" in body, "Response missing '_id' key"
+    assert body["mentor_id"] == "a00000000000000000000006"
+    assert body["mentee_id"] == "a00000000000000000000004"
 
 
 @pytest.mark.e2e
