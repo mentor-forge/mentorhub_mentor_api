@@ -1,12 +1,11 @@
 """
 Unit tests for Event service (create-style with create + read).
 """
+
 import unittest
 from unittest.mock import patch, MagicMock
-from bson import ObjectId
 from src.services.event_service import EventService
 from api_utils.flask_utils.exceptions import (
-    HTTPBadRequest,
     HTTPForbidden,
     HTTPNotFound,
     HTTPInternalServerError,
@@ -69,9 +68,7 @@ class TestEventService(unittest.TestCase):
 
         data = {"_id": "should-be-removed", "type": "login"}
 
-        EventService.create_event(
-            data, self.mock_token, self.mock_breadcrumb
-        )
+        EventService.create_event(data, self.mock_token, self.mock_breadcrumb)
 
         call_args = mock_mongo.create_document.call_args
         created_data = call_args[0][1]
@@ -110,131 +107,26 @@ class TestEventService(unittest.TestCase):
 
     @patch("src.services.event_service.Config.get_instance")
     @patch("src.services.event_service.MongoIO.get_instance")
-    def test_get_events_first_batch(self, mock_get_mongo, mock_get_config):
-        """Test successful retrieval of first batch (no cursor)."""
+    def test_get_events_returns_all(self, mock_get_mongo, mock_get_config):
+        """Test get_events returns all documents via MongoIO.get_documents."""
         mock_config = MagicMock()
         mock_config.EVENT_COLLECTION_NAME = "Event"
         mock_get_config.return_value = mock_config
 
-        mock_collection = MagicMock()
-        mock_cursor = MagicMock()
-        mock_collection.find.return_value = mock_cursor
-        mock_cursor.sort.return_value = mock_cursor
-        mock_cursor.limit.return_value = mock_cursor
-        mock_cursor.__iter__ = lambda self: iter(
-            [
-                {"_id": ObjectId("507f1f77bcf86cd799439011"), "type": "login"},
-                {"_id": ObjectId("507f1f77bcf86cd799439012"), "type": "logout"},
-            ]
+        mock_mongo = MagicMock()
+        mock_mongo.get_documents.return_value = [
+            {"_id": "507f1f77bcf86cd799439011", "type": "login"},
+            {"_id": "507f1f77bcf86cd799439012", "type": "logout"},
+        ]
+        mock_get_mongo.return_value = mock_mongo
+
+        result = EventService.get_events(self.mock_token, self.mock_breadcrumb)
+
+        self.assertIsInstance(result, list)
+        self.assertEqual(len(result), 2)
+        mock_mongo.get_documents.assert_called_once_with(
+            "Event", sort_by=[("created.at_time", 1)]
         )
-
-        mock_mongo = MagicMock()
-        mock_mongo.get_collection.return_value = mock_collection
-        mock_get_mongo.return_value = mock_mongo
-
-        result = EventService.get_events(
-            self.mock_token, self.mock_breadcrumb, limit=10
-        )
-
-        self.assertIn("items", result)
-        self.assertIn("limit", result)
-        self.assertIn("has_more", result)
-        self.assertIn("next_cursor", result)
-        self.assertEqual(len(result["items"]), 2)
-        self.assertEqual(result["limit"], 10)
-        self.assertFalse(result["has_more"])
-        self.assertIsNone(result["next_cursor"])
-
-    @patch("src.services.event_service.Config.get_instance")
-    @patch("src.services.event_service.MongoIO.get_instance")
-    def test_get_events_invalid_limit_too_small(self, mock_get_mongo, mock_get_config):
-        """Test get_events raises HTTPBadRequest for limit < 1."""
-        mock_config = MagicMock()
-        mock_config.EVENT_COLLECTION_NAME = "Event"
-        mock_get_config.return_value = mock_config
-        mock_mongo = MagicMock()
-        mock_mongo.get_collection.return_value = MagicMock()
-        mock_get_mongo.return_value = mock_mongo
-
-        with self.assertRaises(HTTPBadRequest) as context:
-            EventService.get_events(
-                self.mock_token, self.mock_breadcrumb, limit=0
-            )
-        self.assertIn("limit must be >= 1", str(context.exception))
-
-    @patch("src.services.event_service.Config.get_instance")
-    @patch("src.services.event_service.MongoIO.get_instance")
-    def test_get_events_invalid_limit_too_large(self, mock_get_mongo, mock_get_config):
-        """Test get_events raises HTTPBadRequest for limit > 100."""
-        mock_config = MagicMock()
-        mock_config.EVENT_COLLECTION_NAME = "Event"
-        mock_get_config.return_value = mock_config
-        mock_mongo = MagicMock()
-        mock_mongo.get_collection.return_value = MagicMock()
-        mock_get_mongo.return_value = mock_mongo
-
-        with self.assertRaises(HTTPBadRequest) as context:
-            EventService.get_events(
-                self.mock_token, self.mock_breadcrumb, limit=101
-            )
-        self.assertIn("limit must be <= 100", str(context.exception))
-
-    @patch("src.services.event_service.Config.get_instance")
-    @patch("src.services.event_service.MongoIO.get_instance")
-    def test_get_events_invalid_sort_by(self, mock_get_mongo, mock_get_config):
-        """Test get_events raises HTTPBadRequest for invalid sort_by."""
-        mock_config = MagicMock()
-        mock_config.EVENT_COLLECTION_NAME = "Event"
-        mock_get_config.return_value = mock_config
-        mock_mongo = MagicMock()
-        mock_mongo.get_collection.return_value = MagicMock()
-        mock_get_mongo.return_value = mock_mongo
-
-        with self.assertRaises(HTTPBadRequest) as context:
-            EventService.get_events(
-                self.mock_token,
-                self.mock_breadcrumb,
-                sort_by="invalid_field",
-            )
-        self.assertIn("sort_by must be one of", str(context.exception))
-
-    @patch("src.services.event_service.Config.get_instance")
-    @patch("src.services.event_service.MongoIO.get_instance")
-    def test_get_events_invalid_order(self, mock_get_mongo, mock_get_config):
-        """Test get_events raises HTTPBadRequest for invalid order."""
-        mock_config = MagicMock()
-        mock_config.EVENT_COLLECTION_NAME = "Event"
-        mock_get_config.return_value = mock_config
-        mock_mongo = MagicMock()
-        mock_mongo.get_collection.return_value = MagicMock()
-        mock_get_mongo.return_value = mock_mongo
-
-        with self.assertRaises(HTTPBadRequest) as context:
-            EventService.get_events(
-                self.mock_token,
-                self.mock_breadcrumb,
-                order="invalid",
-            )
-        self.assertIn("order must be 'asc' or 'desc'", str(context.exception))
-
-    @patch("src.services.event_service.Config.get_instance")
-    @patch("src.services.event_service.MongoIO.get_instance")
-    def test_get_events_invalid_after_id(self, mock_get_mongo, mock_get_config):
-        """Test get_events raises HTTPBadRequest for invalid after_id."""
-        mock_config = MagicMock()
-        mock_config.EVENT_COLLECTION_NAME = "Event"
-        mock_get_config.return_value = mock_config
-        mock_mongo = MagicMock()
-        mock_mongo.get_collection.return_value = MagicMock()
-        mock_get_mongo.return_value = mock_mongo
-
-        with self.assertRaises(HTTPBadRequest) as context:
-            EventService.get_events(
-                self.mock_token,
-                self.mock_breadcrumb,
-                after_id="invalid",
-            )
-        self.assertIn("after_id must be a valid MongoDB ObjectId", str(context.exception))
 
     @patch("src.services.event_service.Config.get_instance")
     @patch("src.services.event_service.MongoIO.get_instance")
@@ -251,9 +143,7 @@ class TestEventService(unittest.TestCase):
         }
         mock_get_mongo.return_value = mock_mongo
 
-        result = EventService.get_event(
-            "123", self.mock_token, self.mock_breadcrumb
-        )
+        result = EventService.get_event("123", self.mock_token, self.mock_breadcrumb)
 
         self.assertIsNotNone(result)
         self.assertEqual(result["_id"], "123")
@@ -272,38 +162,27 @@ class TestEventService(unittest.TestCase):
         mock_get_mongo.return_value = mock_mongo
 
         with self.assertRaises(HTTPNotFound) as context:
-            EventService.get_event(
-                "999", self.mock_token, self.mock_breadcrumb
-            )
+            EventService.get_event("999", self.mock_token, self.mock_breadcrumb)
         self.assertIn("999", str(context.exception))
 
     @patch("src.services.event_service.Config.get_instance")
     @patch("src.services.event_service.MongoIO.get_instance")
-    def test_get_events_handles_exception(
-        self, mock_get_mongo, mock_get_config
-    ):
+    def test_get_events_handles_exception(self, mock_get_mongo, mock_get_config):
         """Test get_events handles exceptions properly."""
         mock_config = MagicMock()
         mock_config.EVENT_COLLECTION_NAME = "Event"
         mock_get_config.return_value = mock_config
 
-        mock_collection = MagicMock()
-        mock_collection.find.side_effect = Exception("Database error")
-
         mock_mongo = MagicMock()
-        mock_mongo.get_collection.return_value = mock_collection
+        mock_mongo.get_documents.side_effect = Exception("Database error")
         mock_get_mongo.return_value = mock_mongo
 
         with self.assertRaises(HTTPInternalServerError):
-            EventService.get_events(
-                self.mock_token, self.mock_breadcrumb
-            )
+            EventService.get_events(self.mock_token, self.mock_breadcrumb)
 
     @patch("src.services.event_service.Config.get_instance")
     @patch("src.services.event_service.MongoIO.get_instance")
-    def test_create_event_handles_exception(
-        self, mock_get_mongo, mock_get_config
-    ):
+    def test_create_event_handles_exception(self, mock_get_mongo, mock_get_config):
         """Test create_event handles database exceptions."""
         mock_config = MagicMock()
         mock_config.EVENT_COLLECTION_NAME = "Event"
@@ -320,9 +199,7 @@ class TestEventService(unittest.TestCase):
 
     @patch("src.services.event_service.Config.get_instance")
     @patch("src.services.event_service.MongoIO.get_instance")
-    def test_get_event_handles_exception(
-        self, mock_get_mongo, mock_get_config
-    ):
+    def test_get_event_handles_exception(self, mock_get_mongo, mock_get_config):
         """Test get_event handles database exceptions."""
         mock_config = MagicMock()
         mock_config.EVENT_COLLECTION_NAME = "Event"
@@ -333,9 +210,7 @@ class TestEventService(unittest.TestCase):
         mock_get_mongo.return_value = mock_mongo
 
         with self.assertRaises(HTTPInternalServerError):
-            EventService.get_event(
-                "123", self.mock_token, self.mock_breadcrumb
-            )
+            EventService.get_event("123", self.mock_token, self.mock_breadcrumb)
 
 
 if __name__ == "__main__":

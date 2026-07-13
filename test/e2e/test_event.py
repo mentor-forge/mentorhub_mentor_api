@@ -10,6 +10,7 @@ To run these tests:
 
 API runs on port 8391 (same for dev and api).
 """
+
 import pytest
 import requests
 
@@ -45,19 +46,14 @@ def test_create_event_endpoint():
 
 @pytest.mark.e2e
 def test_get_events_endpoint():
-    """Test GET /api/event endpoint."""
+    """Test GET /api/event returns all events as a JSON array."""
     token = get_auth_token()
     headers = {"Authorization": f"Bearer {token}"}
     response = requests.get(f"{BASE_URL}/api/event", headers=headers)
     assert response.status_code == 200, _err(response, 200)
 
     response_data = response.json()
-    assert isinstance(response_data, dict), "Response should be a dict (infinite scroll format)"
-    assert "items" in response_data, "Response should have 'items' key"
-    assert "limit" in response_data, "Response should have 'limit' key"
-    assert "has_more" in response_data, "Response should have 'has_more' key"
-    assert "next_cursor" in response_data, "Response should have 'next_cursor' key"
-    assert isinstance(response_data["items"], list), "Items should be a list"
+    assert isinstance(response_data, list), "Response should be a JSON array"
 
 
 @pytest.mark.e2e
