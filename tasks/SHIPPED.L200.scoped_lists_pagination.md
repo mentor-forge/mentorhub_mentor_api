@@ -1,6 +1,6 @@
 # L200 – Scoped lists: encounter-by-mentee pagination and dashboard read decision
 
-**Status**: Pending  
+**Status**: Shipped  
 **Type**: Feature  
 **Depends On**: L190_plan_list_header_pagination  
 **Description**: Bring the two **scoped** list reads in line with the pagination conventions. (1) `EncounterService.get_encounters_for_mentee` should support `offset`/`size` pagination **within the `mentee_id` scope** (still sorted by `date` desc). (2) `ProfileService.get_profiles` (Mentor Dashboard) should be evaluated for pagination over mentee cards; either add pagination or explicitly document the intentional full read. Encounter and Profile remain mentor-only local domains.

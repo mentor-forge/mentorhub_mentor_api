@@ -1,6 +1,6 @@
 # L300 – E2E tokens: add required profile_id and custom claims (customer_id, mentor_id)
 
-**Status**: Pending  
+**Status**: Shipped  
 **Type**: Feature  
 **Depends On**: none  
 **Description**: The shared Developer-Edition IdP now mints JWTs with custom claims `profile_id`, `customer_id`, and `mentor_id` in addition to `roles` (see `../mentorhub/login.html` / `../mentorhub/welcome-auth.js`). Under the new contract `profile_id` is **required** (as is `roles`), so every E2E test that mints a token without `profile_id` will produce an invalid token once the API enforces the contract. Update the E2E token-minting helpers so all minted tokens carry the new claim set, with `profile_id` (and `roles`) always present. This is a **test-only** change: no `src/`, route, service, or `docs/openapi.yaml` changes are expected or permitted.

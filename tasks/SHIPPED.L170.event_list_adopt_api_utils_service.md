@@ -1,6 +1,6 @@
 # L170 – Event list: adopt shared api_utils EventService
 
-**Status**: Pending  
+**Status**: Shipped  
 **Type**: Feature  
 **Depends On**: L160_resource_list_adopt_api_utils_service  
 **Description**: Replace the local Event **list** path with the harvested shared service. Delete the local `EventService.get_events` list implementation and use `api_utils.services.EventService.get_events` with `offset`/`size` request headers, `type`/`profile_id` filter query params, and standardized `sort_by`/`order` per the shared `EVENT_LIST_ORDER` order spec. Keep the local `get_event` (by-id) and `create_event` until Event is separately harvested. Update `src/routes/event_routes.py` and `docs/openapi.yaml`.

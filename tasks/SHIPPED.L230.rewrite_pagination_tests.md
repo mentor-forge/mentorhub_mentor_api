@@ -1,6 +1,6 @@
 # L230 – Tests: rewrite pagination expectations across suites
 
-**Status**: Pending  
+**Status**: Shipped  
 **Type**: Feature  
 **Depends On**: L220_openapi_pagination_sweep  
 **Description**: Rewrite the E2E and service tests that still assume the cursor/infinite-scroll envelope `{items, has_more, next_cursor}` so they assert the new header-based pagination contract (plain array bodies + `offset`/`size` request headers + pagination response headers + `sort_by`/`order` and filter query params). Primary targets are `test/e2e/test_resource.py` and `test/e2e/test_event.py`, plus any service tests carrying the old envelope expectations.

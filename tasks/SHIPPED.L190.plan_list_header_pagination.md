@@ -1,6 +1,6 @@
 # L190 – Plan list: add offset/size header pagination
 
-**Status**: Pending  
+**Status**: Shipped  
 **Type**: Feature  
 **Depends On**: L180_path_list_align_api_utils_service  
 **Description**: Add `offset`/`size` header pagination to `PlanService.get_plans`, which today returns the full sorted list with no parameters. Optionally support a `name` "contains" filter. Plan remains a **mentor-only local domain** (do not delegate to a shared service); this task just adopts the standardized header-pagination + `sort_by`/`order` conventions so the Plan list is consistent with the migrated list endpoints.

@@ -226,19 +226,26 @@ class EncounterService:
         }
 
     @staticmethod
-    def get_encounters_for_mentee(mentee_id, token, breadcrumb):
+    def get_encounters_for_mentee(mentee_id, token, breadcrumb, offset=None, size=None):
         """
-        Return all of a mentee's Encounter documents, most recent first.
+        Return a mentee's Encounter documents, most recent first.
 
         This is the dedicated per-mentee read used by the Profile detail
         composite. It queries the Encounter collection directly by
-        ``mentee_id`` and sorts by ``date`` descending, superseding the interim
-        "fetch a page then filter" approach.
+        ``mentee_id`` and sorts by ``date`` descending.
+
+        Pagination is **optional** and scoped to the given ``mentee_id``: when
+        both ``offset`` and ``size`` are provided the read is paged
+        (``skip``/``limit``); when omitted (the default) the full list is
+        returned so existing composite callers (``ProfileService.get_profile``
+        and ``get_profile_properties``) are unaffected.
 
         Args:
             mentee_id: The mentee Profile id whose encounters are wanted
             token: Token dictionary with user_id and roles
             breadcrumb: Breadcrumb dictionary for audit/logging
+            offset: Optional zero-based start index (paginated read)
+            size: Optional page size (paginated read)
 
         Returns:
             list[dict]: The mentee's Encounter documents, most recent first.
@@ -247,10 +254,18 @@ class EncounterService:
 
         mongo = MongoIO.get_instance()
         config = Config.get_instance()
+
+        query_kwargs = {
+            "match": {"mentee_id": EncounterService._normalize_mentee_id(mentee_id)},
+            "sort_by": [("date", DESCENDING)],
+        }
+        if offset is not None and size is not None:
+            query_kwargs["skip"] = offset
+            query_kwargs["limit"] = size
+
         encounters = mongo.get_documents(
             config.ENCOUNTER_COLLECTION_NAME,
-            match={"mentee_id": EncounterService._normalize_mentee_id(mentee_id)},
-            sort_by=[("date", DESCENDING)],
+            **query_kwargs,
         )
         logger.info(
             f"Retrieved {len(encounters)} encounters for mentee {mentee_id} "

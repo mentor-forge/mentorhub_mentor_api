@@ -10,6 +10,7 @@ To run these tests:
 
 API runs on port 8391 (same for dev and api).
 """
+
 import pytest
 import requests
 
@@ -45,19 +46,38 @@ def test_create_event_endpoint():
 
 @pytest.mark.e2e
 def test_get_events_endpoint():
-    """Test GET /api/event endpoint."""
+    """Test GET /api/event returns a plain array with pagination headers."""
     token = get_auth_token()
     headers = {"Authorization": f"Bearer {token}"}
     response = requests.get(f"{BASE_URL}/api/event", headers=headers)
     assert response.status_code == 200, _err(response, 200)
 
     response_data = response.json()
-    assert isinstance(response_data, dict), "Response should be a dict (infinite scroll format)"
-    assert "items" in response_data, "Response should have 'items' key"
-    assert "limit" in response_data, "Response should have 'limit' key"
-    assert "has_more" in response_data, "Response should have 'has_more' key"
-    assert "next_cursor" in response_data, "Response should have 'next_cursor' key"
-    assert isinstance(response_data["items"], list), "Items should be a list"
+    assert isinstance(response_data, list), "Response should be a plain JSON array"
+    assert response.headers.get("X-Pagination-Offset") == "0"
+    assert response.headers.get("X-Pagination-Size") == "20"
+    assert response.headers.get("X-Pagination-Returned") == str(len(response_data))
+
+
+@pytest.mark.e2e
+def test_get_events_header_pagination_and_type_filter():
+    """Test GET /api/event honors offset/size headers and the type filter."""
+    token = get_auth_token()
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "offset": "0",
+        "size": "5",
+    }
+    response = requests.get(
+        f"{BASE_URL}/api/event?type=login&sort_by=created.at_time&order=desc",
+        headers=headers,
+    )
+    assert response.status_code == 200, _err(response, 200)
+
+    response_data = response.json()
+    assert isinstance(response_data, list), "Response should be a plain JSON array"
+    assert len(response_data) <= 5, "size=5 should cap the page at five items"
+    assert response.headers.get("X-Pagination-Size") == "5"
 
 
 @pytest.mark.e2e

@@ -11,14 +11,10 @@ To run these tests:
 API runs on port 8391 (same for dev and api).
 """
 
-import os
-import time
-
-import jwt
 import pytest
 import requests
 
-from .e2e_auth import get_auth_token
+from .e2e_auth import get_auth_token, mint_token
 
 BASE_URL = "http://localhost:8391"
 
@@ -34,26 +30,19 @@ def _mentor_only_token(subject="e2e-non-owner-mentor"):
 
     The default persona token (see ``e2e_auth.get_auth_token``) also carries
     ``admin``, which would bypass the owner-or-admin PATCH check. This helper
-    produces a mentor-only token whose resolved Profile (if any) will not own a
-    freshly created encounter, so PATCH is expected to be denied (403).
+    produces a mentor-only token whose ``profile_id`` deliberately does NOT
+    equal the test encounter's ``mentor_id`` (``507f1f77bcf86cd7994390ff``), so
+    ownership fails and PATCH is denied (403).
     """
-    secret = os.environ.get("JWT_SECRET") or "local-dev-jwt-secret-fixed"
-    issuer = os.environ.get("JWT_ISSUER") or "dev-idp"
-    audience = os.environ.get("JWT_AUDIENCE") or "dev-api"
-    algorithm = os.environ.get("JWT_ALGORITHM") or "HS256"
-    now = int(time.time())
-    payload = {
-        "iss": issuer,
-        "aud": audience,
-        "sub": subject,
-        "iat": now,
-        "exp": now + 60 * 60,
-        "roles": ["mentor"],
-    }
-    token = jwt.encode(payload, secret, algorithm=algorithm)
-    if isinstance(token, bytes):
-        return token.decode("ascii")
-    return token
+    return mint_token(
+        sub=subject,
+        roles=["mentor"],
+        profile_id="A00000000000000000000006",
+        customer_id="",
+        mentor_id="",
+        name="E2E Non-Owner Mentor",
+        ttl_seconds=60 * 60,
+    )
 
 
 def _create_encounter(headers, mentor_id="507f1f77bcf86cd799439011"):
@@ -188,8 +177,9 @@ def test_create_encounter_with_seeded_profile_ids():
 
     body = response.json()
     assert "_id" in body, "Response missing '_id' key"
-    assert body["mentor_id"] == "A00000000000000000000006"
-    assert body["mentee_id"] == "A00000000000000000000004"
+    # ObjectId hex is case-insensitive; MongoDB returns canonical lowercase.
+    assert body["mentor_id"].lower() == "a00000000000000000000006"
+    assert body["mentee_id"].lower() == "a00000000000000000000004"
 
 
 @pytest.mark.e2e

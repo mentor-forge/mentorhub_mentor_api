@@ -62,9 +62,7 @@ def create_profile_routes():
         token = create_flask_token()
         breadcrumb = create_flask_breadcrumb(token)
 
-        result = ProfileService.get_profile_properties(
-            profile_id, token, breadcrumb
-        )
+        result = ProfileService.get_profile_properties(profile_id, token, breadcrumb)
         logger.info(
             f"get_profile_properties Success {str(breadcrumb['at_time'])}, "
             f"{breadcrumb['correlation_id']}"

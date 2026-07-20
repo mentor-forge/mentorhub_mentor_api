@@ -1,6 +1,6 @@
 # L160 – Resource list: adopt shared api_utils ResourceService
 
-**Status**: Pending  
+**Status**: Shipped  
 **Type**: Feature  
 **Depends On**: L150_bump_api_utils_0_5_0  
 **Description**: Replace the local Resource **read/list** path with the harvested shared service. Delete the local `ResourceService.get_resources` list implementation and delegate to `api_utils.services.ResourceService` (import directly, or keep a thin local wrapper that delegates). Update the `GET /api/resource` route to use header-based pagination (`offset`/`size`) plus filter query params and standardized `sort_by`/`order` query params per the shared `order_spec`. Mentor-only CRUD (`create_resource`, `update_resource`) may remain in a thin local wrapper delegating to `MongoIO`.

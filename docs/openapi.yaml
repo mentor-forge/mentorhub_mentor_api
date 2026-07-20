@@ -101,81 +101,56 @@ paths:
       tags:
         - Resource
       summary: Get all Resource documents
-      description: Retrieve infinite scroll batch of sorted, filtered Resource documents
+      description: >-
+        Return a paginated array of Resource documents. Pagination uses the
+        `offset`/`size` request headers; ordering uses the `sort_by`/`order`
+        query params (default name asc); filters are query params. The response
+        body is a plain array; pagination metadata is returned via
+        `X-Pagination-*` response headers.
       operationId: getResources
       security:
         - bearerAuth: []
       parameters:
+        - $ref: '#/components/parameters/OffsetHeader'
+        - $ref: '#/components/parameters/SizeHeader'
+        - $ref: '#/components/parameters/SortByParam'
+        - $ref: '#/components/parameters/OrderParam'
         - name: name
           in: query
           required: false
-          description: Optional name filter (supports partial matches, case-insensitive)
+          description: Optional name filter (partial, case-insensitive)
           schema:
             type: string
             example: my-Resource
-        - name: after_id
+        - name: description
           in: query
           required: false
-          description: Cursor for infinite scroll (ID of last item from previous batch, omit for first request)
+          description: Optional description filter (partial, case-insensitive)
           schema:
             type: string
-            pattern: '^[0-9a-fA-F]{24}$'
-            example: 507f1f77bcf86cd799439011
-        - name: limit
+        - name: status
           in: query
           required: false
-          description: Items per page (max 100)
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-            default: 10
-            example: 10
-        - name: sort_by
-          in: query
-          required: false
-          description: Field to sort by (name, description, status, created.at_time, saved.at_time)
+          description: Optional comma-separated status filter (exact match, any-of)
           schema:
             type: string
-            default: name
-            example: name
-        - name: order
-          in: query
-          required: false
-          description: Sort order
-          schema:
-            type: string
-            enum: [asc, desc]
-            default: asc
-            example: asc
+            example: active,draft
       responses:
         '200':
           description: Successfully retrieved matching documents
+          headers:
+            X-Pagination-Offset:
+              $ref: '#/components/headers/X-Pagination-Offset'
+            X-Pagination-Size:
+              $ref: '#/components/headers/X-Pagination-Size'
+            X-Pagination-Returned:
+              $ref: '#/components/headers/X-Pagination-Returned'
           content:
             application/json:
               schema:
-                type: object
-                required:
-                  - items
-                  - limit
-                  - has_more
-                  - next_cursor
-                properties:
-                  items:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/Resource'
-                  limit:
-                    type: integer
-                    example: 10
-                  has_more:
-                    type: boolean
-                    example: true
-                  next_cursor:
-                    type: string
-                    nullable: true
-                    pattern: '^[0-9a-fA-F]{24}$'
-                    example: 507f1f77bcf86cd799439011
+                type: array
+                items:
+                  $ref: '#/components/schemas/Resource'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -288,27 +263,45 @@ paths:
       tags:
         - Path
       summary: Get all Path documents
-      description: Return all Path documents, sorted by name ascending
+      description: >-
+        Return a paginated array of Path documents. Pagination uses the
+        `offset`/`size` request headers; ordering uses the `sort_by`/`order`
+        query params (default name asc); `name` is an optional partial,
+        case-insensitive filter. The response body is a plain array; pagination
+        metadata is returned via `X-Pagination-*` response headers.
       operationId: getPaths
       security:
         - bearerAuth: []
       parameters:
+        - $ref: '#/components/parameters/OffsetHeader'
+        - $ref: '#/components/parameters/SizeHeader'
+        - $ref: '#/components/parameters/SortByParam'
+        - $ref: '#/components/parameters/OrderParam'
         - name: name
           in: query
           required: false
-          description: Optional name filter (supports partial matches, case-insensitive)
+          description: Optional name filter (partial, case-insensitive)
           schema:
             type: string
             example: my-Path
       responses:
         '200':
-          description: Successfully retrieved all matching Path documents
+          description: Successfully retrieved matching Path documents
+          headers:
+            X-Pagination-Offset:
+              $ref: '#/components/headers/X-Pagination-Offset'
+            X-Pagination-Size:
+              $ref: '#/components/headers/X-Pagination-Size'
+            X-Pagination-Returned:
+              $ref: '#/components/headers/X-Pagination-Returned'
           content:
             application/json:
               schema:
                 type: array
                 items:
                   $ref: '#/components/schemas/Path'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '500':
@@ -419,19 +412,45 @@ paths:
       tags:
         - Plan
       summary: Get all Plan documents
-      description: Retrieve all Plan documents, sorted alphabetically by name. No search, pagination, or infinite scroll.
+      description: >-
+        Return a paginated array of Plan documents. Pagination uses the
+        `offset`/`size` request headers; ordering uses the `sort_by`/`order`
+        query params (default name asc); `name` is an optional partial,
+        case-insensitive filter. The response body is a plain array; pagination
+        metadata is returned via `X-Pagination-*` response headers.
       operationId: getPlans
       security:
         - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OffsetHeader'
+        - $ref: '#/components/parameters/SizeHeader'
+        - $ref: '#/components/parameters/SortByParam'
+        - $ref: '#/components/parameters/OrderParam'
+        - name: name
+          in: query
+          required: false
+          description: Optional name filter (partial, case-insensitive)
+          schema:
+            type: string
+            example: intro
       responses:
         '200':
-          description: All Plan documents, sorted by name
+          description: Successfully retrieved matching Plan documents
+          headers:
+            X-Pagination-Offset:
+              $ref: '#/components/headers/X-Pagination-Offset'
+            X-Pagination-Size:
+              $ref: '#/components/headers/X-Pagination-Size'
+            X-Pagination-Returned:
+              $ref: '#/components/headers/X-Pagination-Returned'
           content:
             application/json:
               schema:
                 type: array
                 items:
                   $ref: '#/components/schemas/Plan'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '500':
@@ -659,81 +678,52 @@ paths:
       tags:
         - Event
       summary: Get all Event documents
-      description: Retrieve infinite scroll batch of sorted, filtered Event documents
+      description: >-
+        Return a paginated array of Event documents. Pagination uses the
+        `offset`/`size` request headers; ordering uses the `sort_by`/`order`
+        query params (default created.at_time desc). `type` is an optional
+        comma-separated filter and `profile_id` scopes on context.profile_id.
+        The response body is a plain array; pagination metadata is returned via
+        `X-Pagination-*` response headers.
       operationId: getEvents
       security:
         - bearerAuth: []
       parameters:
-        - name: name
+        - $ref: '#/components/parameters/OffsetHeader'
+        - $ref: '#/components/parameters/SizeHeader'
+        - $ref: '#/components/parameters/SortByParam'
+        - $ref: '#/components/parameters/OrderParam'
+        - name: type
           in: query
           required: false
-          description: Optional name filter (supports partial matches, case-insensitive)
+          description: Optional comma-separated event type filter (exact match, any-of)
           schema:
             type: string
-            example: my-Event
-        - name: after_id
+            example: login,logout
+        - name: profile_id
           in: query
           required: false
-          description: Cursor for infinite scroll (ID of last item from previous batch, omit for first request)
+          description: Optional scope on context.profile_id (MongoDB ObjectId)
           schema:
             type: string
             pattern: '^[0-9a-fA-F]{24}$'
             example: 507f1f77bcf86cd799439011
-        - name: limit
-          in: query
-          required: false
-          description: Items per page (max 100)
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-            default: 10
-            example: 10
-        - name: sort_by
-          in: query
-          required: false
-          description: Field to sort by (name, description, created.at_time)
-          schema:
-            type: string
-            default: name
-            example: name
-        - name: order
-          in: query
-          required: false
-          description: Sort order
-          schema:
-            type: string
-            enum: [asc, desc]
-            default: asc
-            example: asc
       responses:
         '200':
           description: Successfully retrieved Events
+          headers:
+            X-Pagination-Offset:
+              $ref: '#/components/headers/X-Pagination-Offset'
+            X-Pagination-Size:
+              $ref: '#/components/headers/X-Pagination-Size'
+            X-Pagination-Returned:
+              $ref: '#/components/headers/X-Pagination-Returned'
           content:
             application/json:
               schema:
-                type: object
-                required:
-                  - items
-                  - limit
-                  - has_more
-                  - next_cursor
-                properties:
-                  items:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/Event'
-                  limit:
-                    type: integer
-                    example: 10
-                  has_more:
-                    type: boolean
-                    example: true
-                  next_cursor:
-                    type: string
-                    nullable: true
-                    pattern: '^[0-9a-fA-F]{24}$'
-                    example: 507f1f77bcf86cd799439011
+                type: array
+                items:
+                  $ref: '#/components/schemas/Event'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -1003,6 +993,60 @@ components:
         type: string
         pattern: '^[0-9a-fA-F]{24}$'
         example: 507f1f77bcf86cd799439011
+
+    OffsetHeader:
+      name: offset
+      in: header
+      required: false
+      description: Zero-based index of the first item to return (pagination).
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+        example: 0
+    SizeHeader:
+      name: size
+      in: header
+      required: false
+      description: Maximum number of items to return (page size, max 100).
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+        example: 20
+    SortByParam:
+      name: sort_by
+      in: query
+      required: false
+      description: Field to sort by (validated against the endpoint's allowed set).
+      schema:
+        type: string
+    OrderParam:
+      name: order
+      in: query
+      required: false
+      description: Sort order.
+      schema:
+        type: string
+        enum: [asc, desc]
+
+  headers:
+    X-Pagination-Offset:
+      description: The offset applied to this list response.
+      schema:
+        type: integer
+        example: 0
+    X-Pagination-Size:
+      description: The page size applied to this list response.
+      schema:
+        type: integer
+        example: 20
+    X-Pagination-Returned:
+      description: The number of items returned in this response.
+      schema:
+        type: integer
+        example: 20
 
   responses:
     BadRequest:
@@ -2304,31 +2348,3 @@ components:
           type: string
           description: A brief summary of the transcript
           maxLength: 4096
-
-    InfiniteScrollResponse:
-      type: object
-      description: Infinite scroll pagination response
-      required:
-        - items
-        - limit
-        - has_more
-        - next_cursor
-      properties:
-        items:
-          type: array
-          description: Array of resource documents
-          items: {}
-        limit:
-          type: integer
-          description: Items per batch
-          example: 10
-        has_more:
-          type: boolean
-          description: Whether there are more items available
-          example: true
-        next_cursor:
-          type: string
-          nullable: true
-          description: ID of last item for next request (null if no more items)
-          pattern: '^[0-9a-fA-F]{24}$'
-          example: 507f1f77bcf86cd799439011

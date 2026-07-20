@@ -68,13 +68,13 @@ class TestPathRoutes(unittest.TestCase):
     @patch("src.routes.path_routes.create_flask_token")
     @patch("src.routes.path_routes.create_flask_breadcrumb")
     @patch("src.routes.path_routes.PathService.get_paths")
-    def test_get_paths_no_filter(
+    def test_get_paths_default_pagination(
         self,
         mock_get_paths,
         mock_create_breadcrumb,
         mock_create_token,
     ):
-        """Test GET /api/path without name filter."""
+        """GET /api/path returns a plain array with pagination headers."""
         mock_create_token.return_value = self.mock_token
         mock_create_breadcrumb.return_value = self.mock_breadcrumb
 
@@ -89,28 +89,36 @@ class TestPathRoutes(unittest.TestCase):
         data = response.json
         self.assertIsInstance(data, list)
         self.assertEqual(len(data), 2)
+        self.assertEqual(response.headers["X-Pagination-Offset"], "0")
+        self.assertEqual(response.headers["X-Pagination-Size"], "20")
+        self.assertEqual(response.headers["X-Pagination-Returned"], "2")
         mock_get_paths.assert_called_once_with(
             self.mock_token,
             self.mock_breadcrumb,
-            name=None,
+            offset=0,
+            size=20,
+            filters={},
+            sort_by=[("name", 1), ("_id", 1)],
         )
 
     @patch("src.routes.path_routes.create_flask_token")
     @patch("src.routes.path_routes.create_flask_breadcrumb")
     @patch("src.routes.path_routes.PathService.get_paths")
-    def test_get_paths_with_name_filter(
+    def test_get_paths_with_headers_and_name_filter(
         self,
         mock_get_paths,
         mock_create_breadcrumb,
         mock_create_token,
     ):
-        """Test GET /api/path with name query parameter."""
+        """GET /api/path honors offset/size headers and the name filter."""
         mock_create_token.return_value = self.mock_token
         mock_create_breadcrumb.return_value = self.mock_breadcrumb
 
         mock_get_paths.return_value = [{"_id": "123", "name": "test-path"}]
 
-        response = self.client.get("/api/path?name=test")
+        response = self.client.get(
+            "/api/path?name=test", headers={"offset": "0", "size": "10"}
+        )
 
         self.assertEqual(response.status_code, 200)
         data = response.json
@@ -119,7 +127,10 @@ class TestPathRoutes(unittest.TestCase):
         mock_get_paths.assert_called_once_with(
             self.mock_token,
             self.mock_breadcrumb,
-            name="test",
+            offset=0,
+            size=10,
+            filters={"name": "test"},
+            sort_by=[("name", 1), ("_id", 1)],
         )
 
     @patch("src.routes.path_routes.create_flask_token")

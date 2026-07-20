@@ -1,6 +1,6 @@
 # L220 – OpenAPI sweep: remove infinite-scroll schemas, document header pagination
 
-**Status**: Pending  
+**Status**: Shipped  
 **Type**: Feature  
 **Depends On**: L210_harvest_alignment_read_paths  
 **Description**: Sweep `docs/openapi.yaml` to remove the cursor/infinite-scroll response schemas and document **header-based pagination** on every `GET` list operation. Each list endpoint should describe the `offset`/`size` request headers, the pagination response headers, and the standardized `sort_by`/`order` (and any filter) query params, consistent with the migrations in L160–L200.

@@ -81,7 +81,7 @@ class TestPlanService(unittest.TestCase):
     def test_get_plans_returns_all_sorted_by_name(
         self, mock_get_mongo, mock_get_config
     ):
-        """get_plans returns the full list, sorted by name, as a plain list."""
+        """get_plans returns a page (default name asc) as a plain list."""
         mock_config = MagicMock()
         mock_config.PLAN_COLLECTION_NAME = "Plan"
         mock_get_config.return_value = mock_config
@@ -100,7 +100,41 @@ class TestPlanService(unittest.TestCase):
         mock_mongo.get_documents.assert_called_once()
         args, kwargs = mock_mongo.get_documents.call_args
         self.assertEqual(args[0], "Plan")
-        self.assertEqual(kwargs["sort_by"], [("name", ASCENDING)])
+        # Default order is name asc with a stable _id tiebreaker; default page.
+        self.assertEqual(kwargs["sort_by"], [("name", ASCENDING), ("_id", ASCENDING)])
+        self.assertEqual(kwargs["skip"], 0)
+        self.assertEqual(kwargs["limit"], 20)
+
+    @patch("src.services.plan_service.Config.get_instance")
+    @patch("src.services.plan_service.MongoIO.get_instance")
+    def test_get_plans_applies_pagination_and_name_filter(
+        self, mock_get_mongo, mock_get_config
+    ):
+        """get_plans honors offset/size and the optional name contains filter."""
+        mock_config = MagicMock()
+        mock_config.PLAN_COLLECTION_NAME = "Plan"
+        mock_get_config.return_value = mock_config
+
+        mock_mongo = MagicMock()
+        mock_mongo.get_documents.return_value = []
+        mock_get_mongo.return_value = mock_mongo
+
+        PlanService.get_plans(
+            self.mock_token,
+            self.mock_breadcrumb,
+            offset=10,
+            size=5,
+            filters={"name": "intro"},
+            sort_by=[("name", ASCENDING), ("_id", ASCENDING)],
+        )
+
+        args, kwargs = mock_mongo.get_documents.call_args
+        self.assertEqual(args[0], "Plan")
+        self.assertEqual(
+            kwargs["match"], {"name": {"$regex": "intro", "$options": "i"}}
+        )
+        self.assertEqual(kwargs["skip"], 10)
+        self.assertEqual(kwargs["limit"], 5)
 
     @patch("src.services.plan_service.Config.get_instance")
     @patch("src.services.plan_service.MongoIO.get_instance")

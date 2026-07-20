@@ -1,6 +1,6 @@
 # L180 – Path list: align with shared api_utils PathService
 
-**Status**: Pending  
+**Status**: Shipped  
 **Type**: Feature  
 **Depends On**: L170_event_list_adopt_api_utils_service  
 **Description**: Align the Path **list** path with the harvested `api_utils.services.PathService` (header pagination + `name` filter + standardized `sort_by`/`order`). Remove the duplicate local `path_service.py` list logic. Path CRUD (`create_path`, `update_path`, `get_path`) stays local unless/until Path CRUD is separately harvested; if it is, delegate accordingly and note it.

@@ -10,7 +10,8 @@ from api_utils.flask_utils.exceptions import (
     HTTPNotFound,
     HTTPInternalServerError,
 )
-from pymongo import ASCENDING
+from api_utils.mongo_utils.list_query import DEFAULT_OFFSET, DEFAULT_SIZE
+from api_utils.services import PathService as SharedPathService
 import logging
 
 logger = logging.getLogger(__name__)
@@ -20,10 +21,9 @@ class PathService:
     """
     Service class for Path domain operations.
 
-    Handles:
-    - RBAC authorization checks (placeholder for future implementation)
-    - MongoDB operations via MongoIO singleton
-    - Business logic for Path domain
+    - List reads delegate to the shared ``api_utils.services.PathService``.
+    - Create/update CRUD and the plain by-id read remain local (mentor/admin
+      RBAC on update), routed through ``MongoIO``.
     """
 
     @staticmethod
@@ -108,37 +108,30 @@ class PathService:
             raise HTTPInternalServerError(f"Failed to create path: {error_msg}")
 
     @staticmethod
-    def get_paths(token, breadcrumb, name=None):
+    def get_paths(
+        token,
+        breadcrumb,
+        offset=DEFAULT_OFFSET,
+        size=DEFAULT_SIZE,
+        filters=None,
+        sort_by=None,
+    ):
         """
-        Retrieve all Path documents, sorted by name ascending.
+        Return a paginated array of Path documents.
 
-        Args:
-            token: Authentication token
-            breadcrumb: Audit breadcrumb
-            name: Optional name filter (partial, case-insensitive)
-
-        Returns:
-            list[dict]: All matching Path documents, sorted by name ascending.
+        Delegates to the shared ``api_utils.services.PathService`` list read
+        (offset/size pagination, ``name`` contains filter, name-asc default
+        order). Returns a plain list; pagination metadata is conveyed via
+        response headers by the route layer.
         """
-        try:
-            PathService._check_permission(token, "read")
-            mongo = MongoIO.get_instance()
-            config = Config.get_instance()
-
-            match = {}
-            if name:
-                match["name"] = {"$regex": name, "$options": "i"}
-
-            paths = mongo.get_documents(
-                config.PATH_COLLECTION_NAME,
-                match=match,
-                sort_by=[("name", ASCENDING)],
-            )
-            logger.info(f"Retrieved {len(paths)} paths for user {token.get('user_id')}")
-            return paths
-        except Exception as e:
-            logger.error(f"Error retrieving paths: {str(e)}")
-            raise HTTPInternalServerError("Failed to retrieve paths")
+        return SharedPathService.get_paths(
+            token,
+            breadcrumb,
+            offset=offset,
+            size=size,
+            filters=filters,
+            sort_by=sort_by,
+        )
 
     @staticmethod
     def get_path(path_id, token, breadcrumb):
@@ -218,3 +211,13 @@ class PathService:
         except Exception as e:
             logger.error(f"Error updating path { path_id}: {str(e)}")
             raise HTTPInternalServerError(f"Failed to update path { path_id}")
+
+
+# Re-export the shared filter/order specs so the route layer can parse list
+# request params against the same contract the shared service enforces.
+from api_utils.services.path_service import (  # noqa: E402
+    PATH_LIST_FILTERS,
+    PATH_LIST_ORDER,
+)
+
+__all__ = ["PathService", "PATH_LIST_FILTERS", "PATH_LIST_ORDER"]

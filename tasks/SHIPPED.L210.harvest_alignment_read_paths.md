@@ -1,6 +1,6 @@
 # L210 – Harvest alignment: prefer api_utils.services for harvested read paths
 
-**Status**: Pending  
+**Status**: Shipped  
 **Type**: Feature  
 **Depends On**: L200_scoped_lists_pagination  
 **Description**: Sweep the service layer so that **read paths** for domains already harvested into `api_utils.services` (Note, Event, Journey, Path, Resource) prefer the shared implementation, while **mentor-only domains** (Mentee, Encounter, Plan, Profile) are **retained locally for now**. This consolidates the per-domain migrations from L160–L200 into a consistent policy and removes any remaining duplicated read logic for harvested domains. The local retention of mentor-only domains is an **interim state**, not the target architecture: it stands only until those domains are harvested upstream (see `ISSUE.mentorhub_api_utils.harvest_mentor_services.md`), after which the Mentor API adopts the shared services and deletes `src/services/` (see `ISSUE.mentorhub_mentor_api.adopt_harvested_services.md`).

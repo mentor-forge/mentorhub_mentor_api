@@ -1,90 +1,66 @@
 """
 Event service for business logic and RBAC.
 
-Handles RBAC checks and MongoDB operations for Event domain.
+The Event **list** read is served by the shared
+``api_utils.services.EventService`` (harvested into api_utils 0.5.x). The
+mentor-local ``create_event`` (with ObjectId encoding of ``profile_id``) and the
+plain by-id ``get_event`` read remain here until Event CRUD is separately
+harvested.
 """
+
 from api_utils import MongoIO, Config
-from api_utils.flask_utils.exceptions import HTTPBadRequest, HTTPForbidden, HTTPNotFound, HTTPInternalServerError
-from api_utils.mongo_utils import execute_infinite_scroll_query, encode_document
+from api_utils.flask_utils.exceptions import (
+    HTTPForbidden,
+    HTTPNotFound,
+    HTTPInternalServerError,
+)
+from api_utils.mongo_utils import encode_document
+from api_utils.mongo_utils.list_query import DEFAULT_OFFSET, DEFAULT_SIZE
+from api_utils.services import EventService as SharedEventService
 import logging
 
 logger = logging.getLogger(__name__)
 
-# Allowed sort fields for Event domain
-ALLOWED_SORT_FIELDS = ['type', 'created.at_time']
-
 # Identifier fields stored as BSON ObjectId per the Event dictionary
 # (the schema validator rejects string ids). encode_document recurses into
 # nested objects, so this also covers context.profile_id.
-ID_PROPERTIES = ['_id', 'profile_id']
+ID_PROPERTIES = ["_id", "profile_id"]
 DATE_PROPERTIES = []
 
 
 class EventService:
     """
     Service class for Event domain operations.
-    
-    Handles:
-    - RBAC authorization checks (placeholder for future implementation)
-    - MongoDB operations via MongoIO singleton
-    - Business logic for Event domain
+
+    - List reads delegate to the shared ``api_utils.services.EventService``.
+    - ``create_event`` and the plain by-id ``get_event`` remain local, routed
+      through ``MongoIO``.
     """
-    
+
     @staticmethod
     def _check_permission(token, operation):
-        """
-        Check if the user has permission to perform an operation.
-        
-        Args:
-            token: Token dictionary with user_id and roles
-            operation: The operation being performed (e.g., 'read', 'create')
-        
-        Raises:
-            HTTPForbidden: If user doesn't have required permission
-            
-        Note: This is a placeholder for future RBAC implementation.
-        For now, all operations require a valid token (authentication only).
-        
-        Example RBAC implementation:
-            if operation == 'create':
-                # Event requires staff or admin role
-                if not any(role in token.get('roles', []) for role in ['staff', 'admin']):
-                    raise HTTPForbidden("Staff or admin role required to create event documents")
-            elif operation == 'read':
-                # Read requires any authenticated user (no additional check needed)
-                pass
-        """
+        """Placeholder RBAC hook (authenticated access only for now)."""
         pass
-    
+
     @staticmethod
     def create_event(data, token, breadcrumb):
         """
-        Create a new event document.
-        
-        Args:
-            data: Dictionary containing event data
-            token: Token dictionary with user_id and roles
-            breadcrumb: Breadcrumb dictionary for logging (contains at_time, by_user, from_ip, correlation_id)
-            
-        Returns:
-            str: The ID of the eventd event document
+        Create a new event document (mentor-local).
+
+        Encodes identifier fields (e.g. ``context.profile_id``) to BSON
+        ObjectId so the collection's ``$jsonSchema`` validator accepts the
+        document, then stamps the system-managed ``created`` breadcrumb.
         """
         try:
-            EventService._check_permission(token, 'create')
-            
-            # Remove _id if present (MongoDB will generate it)
-            if '_id' in data:
-                del data['_id']
-            
-            # Encode identifier fields (e.g. context.profile_id) to BSON ObjectId
-            # so the collection's $jsonSchema validator accepts the document.
+            EventService._check_permission(token, "create")
+
+            if "_id" in data:
+                del data["_id"]
+
             encode_document(data, ID_PROPERTIES, DATE_PROPERTIES)
-            
-            # Automatically populate required field: created
-            # This is system-managed and should not be provided by the client
-            # Use breadcrumb directly as it already has the correct structure
-            data['created'] = breadcrumb
-            
+
+            data["created"] = breadcrumb
+
             mongo = MongoIO.get_instance()
             config = Config.get_instance()
             event_id = mongo.create_document(config.EVENT_COLLECTION_NAME, data)
@@ -96,80 +72,47 @@ class EventService:
             error_msg = str(e)
             logger.error(f"Error creating event: {error_msg}")
             raise HTTPInternalServerError(f"Failed to create event: {error_msg}")
-    
+
     @staticmethod
-    def get_events(token, breadcrumb, after_id=None, limit=10, sort_by='created.at_time', order='asc'):
+    def get_events(
+        token,
+        breadcrumb,
+        offset=DEFAULT_OFFSET,
+        size=DEFAULT_SIZE,
+        filters=None,
+        sort_by=None,
+        *,
+        profile_id=None,
+    ):
         """
-        Get infinite scroll batch of sorted event documents.
-        
-        Args:
-            token: Authentication token
-            breadcrumb: Audit breadcrumb
-            after_id: Cursor (ID of last item from previous batch, None for first request)
-            limit: Items per batch
-            sort_by: Field to sort by (one of: type, created.at_time)
-            order: Sort order ('asc' or 'desc')
-        
-        Returns:
-            dict: {
-                'items': [...],
-                'limit': int,
-                'has_more': bool,
-                'next_cursor': str|None  # ID of last item, or None if no more
-            }
-        
-        Raises:
-            HTTPBadRequest: If invalid parameters provided
+        Return a paginated array of Event documents.
+
+        Delegates to the shared ``api_utils.services.EventService`` list read
+        (offset/size pagination, ``type`` filter and ``EVENT_LIST_ORDER``
+        ordering, optional ``profile_id`` scope on ``context.profile_id``).
         """
-        try:
-            EventService._check_permission(token, 'read')
-            mongo = MongoIO.get_instance()
-            config = Config.get_instance()
-            collection = mongo.get_collection(config.EVENT_COLLECTION_NAME)
-            result = execute_infinite_scroll_query(
-                collection,
-                after_id=after_id,
-                limit=limit,
-                sort_by=sort_by,
-                order=order,
-                allowed_sort_fields=ALLOWED_SORT_FIELDS,
-            )
-            logger.info(
-                f"Retrieved {len(result['items'])} events (has_more={result['has_more']}) "
-                f"for user {token.get('user_id')}"
-            )
-            return result
-        except HTTPBadRequest:
-            raise
-        except Exception as e:
-            logger.error(f"Error retrieving events: {str(e)}")
-            raise HTTPInternalServerError("Failed to retrieve events")
-    
+        return SharedEventService.get_events(
+            token,
+            breadcrumb,
+            offset=offset,
+            size=size,
+            filters=filters,
+            sort_by=sort_by,
+            profile_id=profile_id,
+        )
+
     @staticmethod
     def get_event(event_id, token, breadcrumb):
-        """
-        Retrieve a specific event document by ID.
-        
-        Args:
-            event_id: The event ID to retrieve
-            token: Token dictionary with user_id and roles
-            breadcrumb: Breadcrumb dictionary for logging
-            
-        Returns:
-            dict: The event document
-            
-        Raises:
-            HTTPNotFound: If event is not found
-        """
+        """Retrieve a specific event document by ID (mentor-local read)."""
         try:
-            EventService._check_permission(token, 'read')
-            
+            EventService._check_permission(token, "read")
+
             mongo = MongoIO.get_instance()
             config = Config.get_instance()
             event = mongo.get_document(config.EVENT_COLLECTION_NAME, event_id)
             if event is None:
                 raise HTTPNotFound(f"Event { event_id} not found")
-            
+
             logger.info(f"Retrieved event { event_id} for user {token.get('user_id')}")
             return event
         except HTTPNotFound:
@@ -177,3 +120,13 @@ class EventService:
         except Exception as e:
             logger.error(f"Error retrieving event { event_id}: {str(e)}")
             raise HTTPInternalServerError(f"Failed to retrieve event { event_id}")
+
+
+# Re-export the shared filter/order specs so the route layer can parse list
+# request params against the same contract the shared service enforces.
+from api_utils.services.event_service import (  # noqa: E402
+    EVENT_LIST_FILTERS,
+    EVENT_LIST_ORDER,
+)
+
+__all__ = ["EventService", "EVENT_LIST_FILTERS", "EVENT_LIST_ORDER"]

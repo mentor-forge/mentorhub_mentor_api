@@ -75,54 +75,33 @@ class TestPathService(unittest.TestCase):
         created_data = call_args[0][1]
         self.assertNotIn("_id", created_data)
 
-    @patch("src.services.path_service.Config.get_instance")
-    @patch("src.services.path_service.MongoIO.get_instance")
-    def test_get_paths_returns_all(self, mock_get_mongo, mock_get_config):
-        """Test get_paths returns all documents as a list, sorted by name asc."""
-        mock_config = MagicMock()
-        mock_config.PATH_COLLECTION_NAME = "Path"
-        mock_get_config.return_value = mock_config
-
+    @patch("src.services.path_service.SharedPathService")
+    def test_get_paths_delegates_to_shared(self, mock_shared):
+        """The Path list read delegates to the shared PathService."""
         docs = [
             {"_id": ObjectId("507f1f77bcf86cd799439011"), "name": "path1"},
             {"_id": ObjectId("507f1f77bcf86cd799439012"), "name": "path2"},
         ]
-        mock_mongo = MagicMock()
-        mock_mongo.get_documents.return_value = docs
-        mock_get_mongo.return_value = mock_mongo
+        mock_shared.get_paths.return_value = docs
 
-        result = PathService.get_paths(self.mock_token, self.mock_breadcrumb)
-
-        self.assertIsInstance(result, list)
-        self.assertEqual(len(result), 2)
-        mock_mongo.get_documents.assert_called_once_with(
-            "Path", match={}, sort_by=[("name", 1)]
-        )
-
-    @patch("src.services.path_service.Config.get_instance")
-    @patch("src.services.path_service.MongoIO.get_instance")
-    def test_get_paths_name_filter(self, mock_get_mongo, mock_get_config):
-        """Test get_paths applies a case-insensitive partial name filter."""
-        mock_config = MagicMock()
-        mock_config.PATH_COLLECTION_NAME = "Path"
-        mock_get_config.return_value = mock_config
-
-        mock_mongo = MagicMock()
-        mock_mongo.get_documents.return_value = [
-            {"_id": ObjectId("507f1f77bcf86cd799439011"), "name": "test-path"}
-        ]
-        mock_get_mongo.return_value = mock_mongo
-
+        sort_by = [("name", 1), ("_id", 1)]
         result = PathService.get_paths(
-            self.mock_token, self.mock_breadcrumb, name="test"
+            self.mock_token,
+            self.mock_breadcrumb,
+            offset=0,
+            size=20,
+            filters={"name": "test"},
+            sort_by=sort_by,
         )
 
-        self.assertIsInstance(result, list)
-        self.assertEqual(len(result), 1)
-        mock_mongo.get_documents.assert_called_once_with(
-            "Path",
-            match={"name": {"$regex": "test", "$options": "i"}},
-            sort_by=[("name", 1)],
+        self.assertEqual(result, docs)
+        mock_shared.get_paths.assert_called_once_with(
+            self.mock_token,
+            self.mock_breadcrumb,
+            offset=0,
+            size=20,
+            filters={"name": "test"},
+            sort_by=sort_by,
         )
 
     @patch("src.services.path_service.Config.get_instance")
@@ -354,18 +333,12 @@ class TestPathService(unittest.TestCase):
                 {"name": "test"}, self.mock_token, self.mock_breadcrumb
             )
 
-    @patch("src.services.path_service.Config.get_instance")
-    @patch("src.services.path_service.MongoIO.get_instance")
-    def test_get_paths_handles_exception(self, mock_get_mongo, mock_get_config):
-        """Test get_paths handles database exceptions."""
-        mock_config = MagicMock()
-        mock_config.PATH_COLLECTION_NAME = "Path"
-        mock_get_config.return_value = mock_config
-
-        mock_mongo = MagicMock()
-        mock_mongo.get_documents.side_effect = Exception("Database error")
-        mock_get_mongo.return_value = mock_mongo
-
+    @patch("src.services.path_service.SharedPathService")
+    def test_get_paths_propagates_shared_errors(self, mock_shared):
+        """Errors from the shared service surface unchanged."""
+        mock_shared.get_paths.side_effect = HTTPInternalServerError(
+            "Failed to retrieve paths"
+        )
         with self.assertRaises(HTTPInternalServerError):
             PathService.get_paths(self.mock_token, self.mock_breadcrumb)
 
