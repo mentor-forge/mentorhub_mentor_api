@@ -3,7 +3,7 @@
 **Status**: Pending  
 **Type**: Feature  
 **Depends On**: L200_scoped_lists_pagination  
-**Description**: Sweep the service layer so that **read paths** for domains already harvested into `api_utils.services` (Note, Event, Journey, Path, Resource) prefer the shared implementation, while **mentor-only domains** (Mentee, Encounter, Plan, Profile) stay local. This consolidates the per-domain migrations from L160–L200 into a consistent policy and removes any remaining duplicated read logic for harvested domains.
+**Description**: Sweep the service layer so that **read paths** for domains already harvested into `api_utils.services` (Note, Event, Journey, Path, Resource) prefer the shared implementation, while **mentor-only domains** (Mentee, Encounter, Plan, Profile) are **retained locally for now**. This consolidates the per-domain migrations from L160–L200 into a consistent policy and removes any remaining duplicated read logic for harvested domains. The local retention of mentor-only domains is an **interim state**, not the target architecture: it stands only until those domains are harvested upstream (see `ISSUE.mentorhub_api_utils.harvest_mentor_services.md`), after which the Mentor API adopts the shared services and deletes `src/services/` (see `ISSUE.mentorhub_mentor_api.adopt_harvested_services.md`).
 
 ## Context
 
@@ -33,13 +33,18 @@ Always read these files before implementation:
 **Policy to apply**
 
 - **Harvested read paths** (Note, Event, Journey, Path, Resource): prefer `api_utils.services.*` — import directly or keep a thin local wrapper that delegates. Remove duplicated local read logic.
-- **Mentor-only domains** (Mentee, Encounter, Plan, Profile): keep local. These carry mentor-specific RBAC/composition (owner-patch, dashboard aggregation, per-mentee scoping) and must not be replaced by the shared service.
-- Domain-specific write/CRUD and mentor-only composition stay local even for harvested domains (as established in L160–L180).
+- **Mentor-only domains** (Mentee, Encounter, Plan, Profile): keep local **for now**. These carry mentor-specific RBAC/composition (owner-patch, dashboard aggregation, per-mentee scoping) that has not yet been harvested, so the shared service cannot replace them **yet**. This is a temporary retention pending upstream harvesting (`ISSUE.mentorhub_api_utils.harvest_mentor_services.md`); it is not the final architecture.
+- Domain-specific write/CRUD and mentor-only composition stay local even for harvested domains (as established in L160–L180) **until harvested** — the target end state is that all domains resolve from `api_utils.services` and this repo carries no local service layer (`ISSUE.mentorhub_mentor_api.adopt_harvested_services.md`).
 
 **Current-state notes**
 
 - "Note" corresponds to the mentee-notes document owned by `MenteeService`; confirm whether its **read** is among the harvested paths before delegating. If the harvested "Note" service does not match the mentor-notes semantics, keep it local and record why.
 - `JourneyService` currently exposes only aggregation (`get_journey_progress`) consumed by the dashboard; delegate only the parts that have a harvested equivalent, keep aggregation local if it does not.
+
+**Follow-on (cross-repo) artifacts**
+
+- `tasks/ISSUE.mentorhub_api_utils.harvest_mentor_services.md` — upstream harvest of the mentor-only domains (blocker for adoption).
+- `tasks/ISSUE.mentorhub_mentor_api.adopt_harvested_services.md` — this repo's adoption of the harvested services and removal of `src/services/`, blocked on that release. These describe the end state that supersedes the interim local retention below.
 
 **MongoIO rule**
 
