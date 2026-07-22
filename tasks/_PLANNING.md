@@ -105,6 +105,16 @@ When planning or reviewing tasks, include this rule in **Context** or **Goals** 
 
 Reference: `../mentorhub_api_utils/api_utils/mongo_utils/mongo_io.py`, `../mentorhub/DeveloperEdition/standards/api_standards.md`, and shipped task `SHIPPED.L070.implement_plan_steps_service.md`.
 
+## Shared services (`api_utils.services`)
+
+Reusable, model-like domain services live in `api_utils.services`. How this repo consumes them depends on how much of the domain is already upstream:
+
+- **Fully-upstream domains** — when a domain's behavior lives entirely in `api_utils.services` with no mentor-local logic, call the shared service **directly from the route layer** (`src/routes/`). Do **not** add a thin `src/services/` module whose only job is to re-call the shared service — that indirection is dead code. (e.g. Aggregation, Note.)
+- **Partially-local domains** — when a domain still has mentor-local pieces (local CRUD, RBAC, or composition) that have not been harvested yet, keep a `src/services/` service that **delegates** its list/read to the shared service and retains only the local pieces. (e.g. Path, Resource, Event.)
+- **Harvest candidates** — domains with substantial local logic intended to move upstream stay local and are tracked with a cross-repo `ISSUE.mentorhub_api_utils.*.md` harvest artifact (paste-ready for planning in `mentorhub_api_utils`); the eventual switch to direct consumption is completed via `ISSUE.mentorhub_mentor_api.adopt_harvested_services.md`.
+
+Blueprints/routes/server registration are always mentor-local — `api_utils` ships services, not this repo's Flask blueprints.
+
 ## Sample task file
 
 For a complete example of a well‑formed `Run as needed` task, see:
