@@ -6,114 +6,128 @@ Provides endpoints for Create domain:
 - GET /api/event - Get all event documents
 - GET /api/event/<id> - Get a specific event document by ID
 """
-from flask import Blueprint, jsonify, request
+
+from flask import Blueprint, jsonify, make_response, request
 from api_utils.flask_utils.token import create_flask_token
 from api_utils.flask_utils.breadcrumb import create_flask_breadcrumb
 from api_utils.flask_utils.route_wrapper import handle_route_exceptions
-from src.services.event_service import EventService
+from api_utils.flask_utils.list_request import parse_list_request
+from src.services.event_service import (
+    EventService,
+    EVENT_LIST_FILTERS,
+    EVENT_LIST_ORDER,
+)
 
 import logging
+
 logger = logging.getLogger(__name__)
+
+
+def _paginated_response(items, offset, size):
+    """Return a plain-array JSON response with pagination metadata headers."""
+    response = make_response(jsonify(items), 200)
+    response.headers["X-Pagination-Offset"] = str(offset)
+    response.headers["X-Pagination-Size"] = str(size)
+    response.headers["X-Pagination-Returned"] = str(len(items))
+    return response
 
 
 def create_event_routes():
     """
     Create a Flask Blueprint exposing event endpoints.
-    
+
     Returns:
         Blueprint: Flask Blueprint with event routes
     """
-    event_routes = Blueprint('event_routes', __name__)
-    
-    @event_routes.route('', methods=['POST'])
+    event_routes = Blueprint("event_routes", __name__)
+
+    @event_routes.route("", methods=["POST"])
     @handle_route_exceptions
     def create_event():
         """
         POST /api/event - Create a new event document.
-        
+
         Request body (JSON):
         {
             "type": "login",
             "context": { "profile_id": "507f1f77bcf86cd799439011" }
         }
-        
+
         Returns:
             JSON response with the created event document including _id
         """
         token = create_flask_token()
         breadcrumb = create_flask_breadcrumb(token)
-        
+
         data = request.get_json() or {}
         event_id = EventService.create_event(data, token, breadcrumb)
         event = EventService.get_event(event_id, token, breadcrumb)
-        
-        logger.info(f"create_event Success {str(breadcrumb['at_time'])}, {breadcrumb['correlation_id']}")
+
+        logger.info(
+            f"create_event Success {str(breadcrumb['at_time'])}, {breadcrumb['correlation_id']}"
+        )
         return jsonify(event), 201
-    
-    @event_routes.route('', methods=['GET'])
+
+    @event_routes.route("", methods=["GET"])
     @handle_route_exceptions
     def get_events():
         """
-        GET /api/event - Retrieve infinite scroll batch of sorted event documents.
-        
-        Query Parameters:
-            after_id: Cursor for infinite scroll (ID of last item from previous batch, omit for first request)
-            limit: Items per batch (default: 10, max: 100)
-            sort_by: Field to sort by (default: 'created.at_time'; one of: type, created.at_time)
-            order: Sort order 'asc' or 'desc' (default: 'asc')
-        
-        Returns:
-            JSON response with infinite scroll results: {
-                'items': [...],
-                'limit': int,
-                'has_more': bool,
-                'next_cursor': str|None
-            }
-        
+        GET /api/event - Return a paginated array of Event documents.
+
+        Pagination uses the ``offset``/``size`` request headers. Ordering uses
+        ``sort_by``/``order`` query params (validated against ``EVENT_LIST_ORDER``);
+        ``type`` is a filter query param and ``profile_id`` scopes on
+        ``context.profile_id``. The response body is a plain JSON array;
+        pagination metadata is returned via ``X-Pagination-*`` response headers.
+
+        Served by the shared ``api_utils.services.EventService``.
+
         Raises:
-            400 Bad Request: If invalid parameters provided
+            400 Bad Request: If invalid pagination/order parameters provided
         """
         token = create_flask_token()
         breadcrumb = create_flask_breadcrumb(token)
-        
-        # Get query parameters
-        after_id = request.args.get('after_id')
-        limit = request.args.get('limit', 10, type=int)
-        sort_by = request.args.get('sort_by', 'created.at_time')
-        order = request.args.get('order', 'asc')
-        
-        # Service layer validates parameters and raises HTTPBadRequest if invalid
-        # @handle_route_exceptions decorator will catch and format the exception
-        result = EventService.get_events(
-            token, 
-            breadcrumb, 
-            after_id=after_id,
-            limit=limit,
-            sort_by=sort_by,
-            order=order
+
+        offset, size, filters, sort_by = parse_list_request(
+            request, EVENT_LIST_FILTERS, EVENT_LIST_ORDER
         )
-        
-        logger.info(f"get_events Success {str(breadcrumb['at_time'])}, {breadcrumb['correlation_id']}")
-        return jsonify(result), 200
-    
-    @event_routes.route('/<event_id>', methods=['GET'])
+        profile_id = request.args.get("profile_id")
+
+        result = EventService.get_events(
+            token,
+            breadcrumb,
+            offset=offset,
+            size=size,
+            filters=filters,
+            sort_by=sort_by,
+            profile_id=profile_id,
+        )
+
+        logger.info(
+            f"get_events Success {str(breadcrumb['at_time'])}, {breadcrumb['correlation_id']}"
+        )
+        return _paginated_response(result, offset, size)
+
+    @event_routes.route("/<event_id>", methods=["GET"])
     @handle_route_exceptions
     def get_event(event_id):
         """
         GET /api/event/<id> - Retrieve a specific event document by ID.
-        
+
         Args:
             event_id: The event ID to retrieve
-            
+
         Returns:
             JSON response with the event document
         """
         token = create_flask_token()
         breadcrumb = create_flask_breadcrumb(token)
-        
+
         event = EventService.get_event(event_id, token, breadcrumb)
-        logger.info(f"get_event Success {str(breadcrumb['at_time'])}, {breadcrumb['correlation_id']}")
+        logger.info(
+            f"get_event Success {str(breadcrumb['at_time'])}, {breadcrumb['correlation_id']}"
+        )
         return jsonify(event), 200
-    
+
     logger.info("Create Flask Routes Registered")
     return event_routes

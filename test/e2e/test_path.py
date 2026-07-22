@@ -11,14 +11,10 @@ To run these tests:
 API runs on port 8391 (same for dev and api).
 """
 
-import os
-import time
-
-import jwt
 import pytest
 import requests
 
-from .e2e_auth import get_auth_token
+from .e2e_auth import get_auth_token, mint_token
 
 BASE_URL = "http://localhost:8391"
 
@@ -81,22 +77,21 @@ def test_path_endpoints_require_auth():
 
 
 def _mint_token(roles):
-    """Mint a persona JWT with the given roles for RBAC e2e cases."""
-    secret = os.environ.get("JWT_SECRET") or "local-dev-jwt-secret-fixed"
-    issuer = os.environ.get("JWT_ISSUER") or "dev-idp"
-    audience = os.environ.get("JWT_AUDIENCE") or "dev-api"
-    algorithm = os.environ.get("JWT_ALGORITHM") or "HS256"
-    now = int(time.time())
-    payload = {
-        "iss": issuer,
-        "aud": audience,
-        "sub": "e2e-rbac",
-        "iat": now,
-        "exp": now + 3600,
-        "roles": list(roles),
-    }
-    token = jwt.encode(payload, secret, algorithm=algorithm)
-    return token.decode("ascii") if isinstance(token, bytes) else token
+    """Mint a persona JWT with the given roles for RBAC e2e cases.
+
+    Carries the full claim set (including a valid ``profile_id``) so the token
+    is accepted; the mentee-role PATCH denial still returns 403 because Path
+    updates require the mentor/admin role, independent of ``profile_id``.
+    """
+    return mint_token(
+        sub="e2e-rbac",
+        roles=roles,
+        profile_id="A00000000000000000000002",
+        customer_id="D00000000000000000000002",
+        mentor_id="A00000000000000000000006",
+        name="E2E RBAC",
+        ttl_seconds=3600,
+    )
 
 
 @pytest.mark.e2e

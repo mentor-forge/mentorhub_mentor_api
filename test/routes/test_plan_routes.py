@@ -5,6 +5,7 @@ These tests validate the Flask route layer for the Plan domain, using the
 generated blueprint factory and mocking out the underlying service and
 token/breadcrumb helpers from api_utils.
 """
+
 import unittest
 from unittest.mock import patch
 from flask import Flask
@@ -24,7 +25,10 @@ class TestPlanRoutes(unittest.TestCase):
         self.client = self.app.test_client()
 
         self.mock_token = {"user_id": "test_user", "roles": ["admin"]}
-        self.mock_breadcrumb = {"at_time": "sometime", "correlation_id": "correlation_ID"}
+        self.mock_breadcrumb = {
+            "at_time": "sometime",
+            "correlation_id": "correlation_ID",
+        }
 
     @patch("src.routes.plan_routes.create_flask_token")
     @patch("src.routes.plan_routes.create_flask_breadcrumb")
@@ -64,13 +68,13 @@ class TestPlanRoutes(unittest.TestCase):
     @patch("src.routes.plan_routes.create_flask_token")
     @patch("src.routes.plan_routes.create_flask_breadcrumb")
     @patch("src.routes.plan_routes.PlanService.get_plans")
-    def test_get_plans_returns_list(
+    def test_get_plans_default_pagination(
         self,
         mock_get_plans,
         mock_create_breadcrumb,
         mock_create_token,
     ):
-        """GET /api/plan returns the full list with no query parameters."""
+        """GET /api/plan returns a plain array with pagination headers."""
         mock_create_token.return_value = self.mock_token
         mock_create_breadcrumb.return_value = self.mock_breadcrumb
 
@@ -85,9 +89,46 @@ class TestPlanRoutes(unittest.TestCase):
         data = response.json
         self.assertIsInstance(data, list)
         self.assertEqual(len(data), 2)
+        self.assertEqual(response.headers["X-Pagination-Offset"], "0")
+        self.assertEqual(response.headers["X-Pagination-Size"], "20")
+        self.assertEqual(response.headers["X-Pagination-Returned"], "2")
         mock_get_plans.assert_called_once_with(
             self.mock_token,
             self.mock_breadcrumb,
+            offset=0,
+            size=20,
+            filters={},
+            sort_by=[("name", 1), ("_id", 1)],
+        )
+
+    @patch("src.routes.plan_routes.create_flask_token")
+    @patch("src.routes.plan_routes.create_flask_breadcrumb")
+    @patch("src.routes.plan_routes.PlanService.get_plans")
+    def test_get_plans_with_headers_and_name_filter(
+        self,
+        mock_get_plans,
+        mock_create_breadcrumb,
+        mock_create_token,
+    ):
+        """GET /api/plan honors offset/size headers and the name filter."""
+        mock_create_token.return_value = self.mock_token
+        mock_create_breadcrumb.return_value = self.mock_breadcrumb
+
+        mock_get_plans.return_value = [{"_id": "123", "name": "intro-plan"}]
+
+        response = self.client.get(
+            "/api/plan?name=intro&order=desc", headers={"offset": "2", "size": "5"}
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsInstance(response.json, list)
+        mock_get_plans.assert_called_once_with(
+            self.mock_token,
+            self.mock_breadcrumb,
+            offset=2,
+            size=5,
+            filters={"name": "intro"},
+            sort_by=[("name", -1), ("_id", -1)],
         )
 
     @patch("src.routes.plan_routes.create_flask_token")
@@ -132,9 +173,7 @@ class TestPlanRoutes(unittest.TestCase):
         mock_create_token.return_value = self.mock_token
         mock_create_breadcrumb.return_value = self.mock_breadcrumb
 
-        mock_get_plan.side_effect = HTTPNotFound(
-            "Plan 999 not found"
-        )
+        mock_get_plan.side_effect = HTTPNotFound("Plan 999 not found")
 
         response = self.client.get("/api/plan/999")
 

@@ -8,15 +8,29 @@ Provides endpoints for Path domain:
 - PATCH /api/path/<id> - Update a path document
 """
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, make_response, request
 from api_utils.flask_utils.token import create_flask_token
 from api_utils.flask_utils.breadcrumb import create_flask_breadcrumb
 from api_utils.flask_utils.route_wrapper import handle_route_exceptions
-from src.services.path_service import PathService
+from api_utils.flask_utils.list_request import parse_list_request
+from src.services.path_service import (
+    PathService,
+    PATH_LIST_FILTERS,
+    PATH_LIST_ORDER,
+)
 
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+def _paginated_response(items, offset, size):
+    """Return a plain-array JSON response with pagination metadata headers."""
+    response = make_response(jsonify(items), 200)
+    response.headers["X-Pagination-Offset"] = str(offset)
+    response.headers["X-Pagination-Size"] = str(size)
+    response.headers["X-Pagination-Returned"] = str(len(items))
+    return response
 
 
 def create_path_routes():
@@ -61,25 +75,39 @@ def create_path_routes():
     @handle_route_exceptions
     def get_paths():
         """
-        GET /api/path - Retrieve all path documents (sorted by name ascending).
+        GET /api/path - Return a paginated array of Path documents.
 
-        Query Parameters:
-            name: Optional name filter (partial, case-insensitive)
+        Pagination uses the ``offset``/``size`` request headers. Ordering uses
+        ``sort_by``/``order`` query params (validated against the shared Path
+        order spec); ``name`` is a contains filter query param. The response
+        body is a plain JSON array; pagination metadata is returned via
+        ``X-Pagination-*`` response headers.
 
-        Returns:
-            JSON array of all matching path documents
+        Served by the shared ``api_utils.services.PathService``.
+
+        Raises:
+            400 Bad Request: If invalid pagination/order parameters provided
         """
         token = create_flask_token()
         breadcrumb = create_flask_breadcrumb(token)
 
-        name = request.args.get("name")
+        offset, size, filters, sort_by = parse_list_request(
+            request, PATH_LIST_FILTERS, PATH_LIST_ORDER
+        )
 
-        result = PathService.get_paths(token, breadcrumb, name=name)
+        result = PathService.get_paths(
+            token,
+            breadcrumb,
+            offset=offset,
+            size=size,
+            filters=filters,
+            sort_by=sort_by,
+        )
 
         logger.info(
             f"get_paths Success {str(breadcrumb['at_time'])}, {breadcrumb['correlation_id']}"
         )
-        return jsonify(result), 200
+        return _paginated_response(result, offset, size)
 
     @path_routes.route("/<path_id>", methods=["GET"])
     @handle_route_exceptions

@@ -10,6 +10,7 @@ To run these tests:
 
 API runs on port 8391 (same for dev and api).
 """
+
 import pytest
 import requests
 
@@ -46,33 +47,50 @@ def test_create_resource_endpoint():
 
 @pytest.mark.e2e
 def test_get_resources_endpoint():
-    """Test GET /api/resource endpoint."""
+    """Test GET /api/resource returns a plain array with pagination headers."""
     token = get_auth_token()
     headers = {"Authorization": f"Bearer {token}"}
     response = requests.get(f"{BASE_URL}/api/resource", headers=headers)
     assert response.status_code == 200, _err(response, 200)
 
     response_data = response.json()
-    assert isinstance(response_data, dict), "Response should be a dict (infinite scroll format)"
-    assert "items" in response_data, "Response should have 'items' key"
-    assert "limit" in response_data, "Response should have 'limit' key"
-    assert "has_more" in response_data, "Response should have 'has_more' key"
-    assert "next_cursor" in response_data, "Response should have 'next_cursor' key"
-    assert isinstance(response_data["items"], list), "Items should be a list"
+    assert isinstance(response_data, list), "Response should be a plain JSON array"
+    assert response.headers.get("X-Pagination-Offset") == "0"
+    assert response.headers.get("X-Pagination-Size") == "20"
+    assert response.headers.get("X-Pagination-Returned") == str(len(response_data))
 
 
 @pytest.mark.e2e
-def test_get_resources_with_name_filter():
-    """Test GET /api/resource with name query parameter."""
+def test_get_resources_header_pagination():
+    """Test GET /api/resource honors offset/size request headers."""
     token = get_auth_token()
-    headers = {"Authorization": f"Bearer {token}"}
-    response = requests.get(f"{BASE_URL}/api/resource?name=e2e", headers=headers)
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "offset": "0",
+        "size": "1",
+    }
+    response = requests.get(f"{BASE_URL}/api/resource", headers=headers)
     assert response.status_code == 200, _err(response, 200)
 
     response_data = response.json()
-    assert isinstance(response_data, dict), "Response should be a dict (infinite scroll format)"
-    assert "items" in response_data, "Response should have 'items' key"
-    assert isinstance(response_data["items"], list), "Items should be a list"
+    assert isinstance(response_data, list), "Response should be a plain JSON array"
+    assert len(response_data) <= 1, "size=1 should cap the page at one item"
+    assert response.headers.get("X-Pagination-Size") == "1"
+
+
+@pytest.mark.e2e
+def test_get_resources_with_name_filter_and_order():
+    """Test GET /api/resource with name filter + sort_by/order query params."""
+    token = get_auth_token()
+    headers = {"Authorization": f"Bearer {token}"}
+    response = requests.get(
+        f"{BASE_URL}/api/resource?name=e2e&sort_by=name&order=asc",
+        headers=headers,
+    )
+    assert response.status_code == 200, _err(response, 200)
+
+    response_data = response.json()
+    assert isinstance(response_data, list), "Response should be a plain JSON array"
 
 
 @pytest.mark.e2e

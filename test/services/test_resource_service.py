@@ -1,6 +1,7 @@
 """
 Unit tests for Resource service.
 """
+
 import unittest
 from unittest.mock import patch, MagicMock
 from bson import ObjectId
@@ -71,141 +72,47 @@ class TestResourceService(unittest.TestCase):
 
         data = {"_id": "should-be-removed", "name": "test"}
 
-        ResourceService.create_resource(
-            data, self.mock_token, self.mock_breadcrumb
-        )
+        ResourceService.create_resource(data, self.mock_token, self.mock_breadcrumb)
 
         call_args = mock_mongo.create_document.call_args
         created_data = call_args[0][1]
         self.assertNotIn("_id", created_data)
 
-    @patch("src.services.resource_service.Config.get_instance")
-    @patch("src.services.resource_service.MongoIO.get_instance")
-    def test_get_resources_first_batch(self, mock_get_mongo, mock_get_config):
-        """Test successful retrieval of first batch (no cursor)."""
-        mock_config = MagicMock()
-        mock_config.RESOURCE_COLLECTION_NAME = "Resource"
-        mock_get_config.return_value = mock_config
+    @patch("src.services.resource_service.SharedResourceService")
+    def test_get_resources_delegates_to_shared(self, mock_shared):
+        """The Resource list read delegates to the shared ResourceService."""
+        mock_shared.get_resources.return_value = [
+            {"_id": ObjectId("507f1f77bcf86cd799439011"), "name": "resource1"},
+        ]
 
-        mock_collection = MagicMock()
-        mock_cursor = MagicMock()
-        mock_collection.find.return_value = mock_cursor
-        mock_cursor.sort.return_value = mock_cursor
-        mock_cursor.limit.return_value = mock_cursor
-        mock_cursor.__iter__ = lambda self: iter(
-            [
-                {"_id": ObjectId("507f1f77bcf86cd799439011"), "name": "resource1"},
-                {"_id": ObjectId("507f1f77bcf86cd799439012"), "name": "resource2"},
-            ]
-        )
-
-        mock_mongo = MagicMock()
-        mock_mongo.get_collection.return_value = mock_collection
-        mock_get_mongo.return_value = mock_mongo
-
+        sort_by = [("name", 1), ("_id", 1)]
         result = ResourceService.get_resources(
-            self.mock_token, self.mock_breadcrumb, limit=10
+            self.mock_token,
+            self.mock_breadcrumb,
+            offset=5,
+            size=10,
+            filters={"name": "res"},
+            sort_by=sort_by,
         )
 
-        self.assertIn("items", result)
-        self.assertIn("limit", result)
-        self.assertIn("has_more", result)
-        self.assertIn("next_cursor", result)
-        self.assertEqual(len(result["items"]), 2)
-        self.assertEqual(result["limit"], 10)
-        self.assertFalse(result["has_more"])
-        self.assertIsNone(result["next_cursor"])
+        self.assertEqual(len(result), 1)
+        mock_shared.get_resources.assert_called_once_with(
+            self.mock_token,
+            self.mock_breadcrumb,
+            offset=5,
+            size=10,
+            filters={"name": "res"},
+            sort_by=sort_by,
+        )
 
-    @patch("src.services.resource_service.Config.get_instance")
-    @patch("src.services.resource_service.MongoIO.get_instance")
-    def test_get_resources_invalid_limit_too_small(self, mock_get_mongo, mock_get_config):
-        """Test get_resources raises HTTPBadRequest for limit < 1."""
-        mock_config = MagicMock()
-        mock_config.RESOURCE_COLLECTION_NAME = "Resource"
-        mock_get_config.return_value = mock_config
-        mock_mongo = MagicMock()
-        mock_mongo.get_collection.return_value = MagicMock()
-        mock_get_mongo.return_value = mock_mongo
-
-        with self.assertRaises(HTTPBadRequest) as context:
-            ResourceService.get_resources(
-                self.mock_token, self.mock_breadcrumb, limit=0
-            )
-        self.assertIn("limit must be >= 1", str(context.exception))
-
-    @patch("src.services.resource_service.Config.get_instance")
-    @patch("src.services.resource_service.MongoIO.get_instance")
-    def test_get_resources_invalid_limit_too_large(self, mock_get_mongo, mock_get_config):
-        """Test get_resources raises HTTPBadRequest for limit > 100."""
-        mock_config = MagicMock()
-        mock_config.RESOURCE_COLLECTION_NAME = "Resource"
-        mock_get_config.return_value = mock_config
-        mock_mongo = MagicMock()
-        mock_mongo.get_collection.return_value = MagicMock()
-        mock_get_mongo.return_value = mock_mongo
-
-        with self.assertRaises(HTTPBadRequest) as context:
-            ResourceService.get_resources(
-                self.mock_token, self.mock_breadcrumb, limit=101
-            )
-        self.assertIn("limit must be <= 100", str(context.exception))
-
-    @patch("src.services.resource_service.Config.get_instance")
-    @patch("src.services.resource_service.MongoIO.get_instance")
-    def test_get_resources_invalid_sort_by(self, mock_get_mongo, mock_get_config):
-        """Test get_resources raises HTTPBadRequest for invalid sort_by."""
-        mock_config = MagicMock()
-        mock_config.RESOURCE_COLLECTION_NAME = "Resource"
-        mock_get_config.return_value = mock_config
-        mock_mongo = MagicMock()
-        mock_mongo.get_collection.return_value = MagicMock()
-        mock_get_mongo.return_value = mock_mongo
-
-        with self.assertRaises(HTTPBadRequest) as context:
-            ResourceService.get_resources(
-                self.mock_token,
-                self.mock_breadcrumb,
-                sort_by="invalid_field",
-            )
-        self.assertIn("sort_by must be one of", str(context.exception))
-
-    @patch("src.services.resource_service.Config.get_instance")
-    @patch("src.services.resource_service.MongoIO.get_instance")
-    def test_get_resources_invalid_order(self, mock_get_mongo, mock_get_config):
-        """Test get_resources raises HTTPBadRequest for invalid order."""
-        mock_config = MagicMock()
-        mock_config.RESOURCE_COLLECTION_NAME = "Resource"
-        mock_get_config.return_value = mock_config
-        mock_mongo = MagicMock()
-        mock_mongo.get_collection.return_value = MagicMock()
-        mock_get_mongo.return_value = mock_mongo
-
-        with self.assertRaises(HTTPBadRequest) as context:
-            ResourceService.get_resources(
-                self.mock_token,
-                self.mock_breadcrumb,
-                order="invalid",
-            )
-        self.assertIn("order must be 'asc' or 'desc'", str(context.exception))
-
-    @patch("src.services.resource_service.Config.get_instance")
-    @patch("src.services.resource_service.MongoIO.get_instance")
-    def test_get_resources_invalid_after_id(self, mock_get_mongo, mock_get_config):
-        """Test get_resources raises HTTPBadRequest for invalid after_id."""
-        mock_config = MagicMock()
-        mock_config.RESOURCE_COLLECTION_NAME = "Resource"
-        mock_get_config.return_value = mock_config
-        mock_mongo = MagicMock()
-        mock_mongo.get_collection.return_value = MagicMock()
-        mock_get_mongo.return_value = mock_mongo
-
-        with self.assertRaises(HTTPBadRequest) as context:
-            ResourceService.get_resources(
-                self.mock_token,
-                self.mock_breadcrumb,
-                after_id="invalid",
-            )
-        self.assertIn("after_id must be a valid MongoDB ObjectId", str(context.exception))
+    @patch("src.services.resource_service.SharedResourceService")
+    def test_get_resources_propagates_shared_errors(self, mock_shared):
+        """Errors from the shared service surface unchanged."""
+        mock_shared.get_resources.side_effect = HTTPInternalServerError(
+            "Failed to retrieve resources"
+        )
+        with self.assertRaises(HTTPInternalServerError):
+            ResourceService.get_resources(self.mock_token, self.mock_breadcrumb)
 
     @patch("src.services.resource_service.Config.get_instance")
     @patch("src.services.resource_service.MongoIO.get_instance")
@@ -243,9 +150,7 @@ class TestResourceService(unittest.TestCase):
         mock_get_mongo.return_value = mock_mongo
 
         with self.assertRaises(HTTPNotFound) as context:
-            ResourceService.get_resource(
-                "999", self.mock_token, self.mock_breadcrumb
-            )
+            ResourceService.get_resource("999", self.mock_token, self.mock_breadcrumb)
         self.assertIn("999", str(context.exception))
 
     @patch("src.services.resource_service.Config.get_instance")
@@ -363,9 +268,7 @@ class TestResourceService(unittest.TestCase):
 
     @patch("src.services.resource_service.Config.get_instance")
     @patch("src.services.resource_service.MongoIO.get_instance")
-    def test_create_resource_handles_exception(
-        self, mock_get_mongo, mock_get_config
-    ):
+    def test_create_resource_handles_exception(self, mock_get_mongo, mock_get_config):
         """Test create_resource handles database exceptions."""
         mock_config = MagicMock()
         mock_config.RESOURCE_COLLECTION_NAME = "Resource"
@@ -382,31 +285,7 @@ class TestResourceService(unittest.TestCase):
 
     @patch("src.services.resource_service.Config.get_instance")
     @patch("src.services.resource_service.MongoIO.get_instance")
-    def test_get_resources_handles_exception(
-        self, mock_get_mongo, mock_get_config
-    ):
-        """Test get_resources handles database exceptions."""
-        mock_config = MagicMock()
-        mock_config.RESOURCE_COLLECTION_NAME = "Resource"
-        mock_get_config.return_value = mock_config
-
-        mock_collection = MagicMock()
-        mock_collection.find.side_effect = Exception("Database error")
-
-        mock_mongo = MagicMock()
-        mock_mongo.get_collection.return_value = mock_collection
-        mock_get_mongo.return_value = mock_mongo
-
-        with self.assertRaises(HTTPInternalServerError):
-            ResourceService.get_resources(
-                self.mock_token, self.mock_breadcrumb
-            )
-
-    @patch("src.services.resource_service.Config.get_instance")
-    @patch("src.services.resource_service.MongoIO.get_instance")
-    def test_get_resource_handles_exception(
-        self, mock_get_mongo, mock_get_config
-    ):
+    def test_get_resource_handles_exception(self, mock_get_mongo, mock_get_config):
         """Test get_resource handles database exceptions."""
         mock_config = MagicMock()
         mock_config.RESOURCE_COLLECTION_NAME = "Resource"
@@ -417,15 +296,11 @@ class TestResourceService(unittest.TestCase):
         mock_get_mongo.return_value = mock_mongo
 
         with self.assertRaises(HTTPInternalServerError):
-            ResourceService.get_resource(
-                "123", self.mock_token, self.mock_breadcrumb
-            )
+            ResourceService.get_resource("123", self.mock_token, self.mock_breadcrumb)
 
     @patch("src.services.resource_service.Config.get_instance")
     @patch("src.services.resource_service.MongoIO.get_instance")
-    def test_update_resource_handles_exception(
-        self, mock_get_mongo, mock_get_config
-    ):
+    def test_update_resource_handles_exception(self, mock_get_mongo, mock_get_config):
         """Test update_resource handles database exceptions."""
         mock_config = MagicMock()
         mock_config.RESOURCE_COLLECTION_NAME = "Resource"
