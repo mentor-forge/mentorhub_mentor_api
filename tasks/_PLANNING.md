@@ -1,11 +1,19 @@
 # API Task Automation Framework - Planning
 
-This folder contains coding tasks that an orchestration agent can execute, based on the context and instructions in each task file. This file is a guide for an agent that is helping to plan changes by creating task files to achieve a goal. Create tasks following the [naming conventions](#naming-conventions) and guides below. Before creating any task files you should review the following files for context:
+This folder contains coding tasks that an orchestration agent can execute, based on the context and instructions in each task file. This file is a guide for an agent that is helping to plan changes by creating task files to achieve a goal. Create tasks following the [naming conventions](#naming-conventions) and guides below. When planning, only create tasks, do not execute any tasks, and do not change any files outside of the tasks folder. 
 
+- **Path anchoring**
+  - All paths in task files are relative to **this API repository root** (the directory that contains `Pipfile`).
+  - Sibling repos must all be sibling folders under a common parent.
+  - Standards: `../mentorhub/DeveloperEdition/standards/api_standards.md`
+  - In-repo: `README.md`, `docs/openapi.yaml`, `src/...`, `test/...`, `tasks/...`
+
+- **Context** Before creating any task files you should review the following files for context:
+- ../mentorhub/DeveloperEdition/standards/ArchitecturePrinciples.md
 - ../mentorhub/DeveloperEdition/standards/api_standards.md
 - ../mentorhub_api_utils/README.md
 - ./README.md
-- ./tasks/_ORCHESTRATION.md
+- ./tasks/_ORCHESTRATE.md
 - ./tasks/_PLANNING.md (this file)
 
 ## Task File Layout
@@ -70,20 +78,35 @@ Each task file must contain the following sections under H1 and H2 headings.
 
 ## Naming Conventions
 - **Recommended filename pattern**:
-  - `STATUS.LNNN.short_task_name.md`
+  - `STATUS.LNNN.short_task_name.md` where L is (F)eature or (D)efect, and NNN is a serial task number. Increment task numbers by 1. When planning, create only PENDING status tasks. 
   - Examples:
-    - `AS_NEEDED.T998.example_update_openapi.md`
-    - `PENDING.L010.update_profile_openapi.md`
-    - `RUNNING.L020.add_profile_field_tests.md`
-    - `SHIPPED.L010.update_profile_openapi.md`
+    - `PENDING.D001.example_defect.md`
+    - `PENDING.F010.update_profile_openapi.md`
+    - `PENDING.F011.add_profile_field_tests.md`
+    - `PENDING.F012.update_profile_openapi.md`
 
-- **Path anchoring**
-  - All paths in task files are relative to **this API repository root** (the directory that contains `Pipfile`).
-  - Sibling repos (mentorhub umbrella, other APIs, SPAs) must all be sibling folders under a common parent.
-  - Standards: `../mentorhub/DeveloperEdition/standards/api_standards.md`
-  - Generated JSON schemas: `../mentorhub/Specifications/schemas/<Collection>.schema.json`
-  - MongoDB configurator tasks (external): `../mentorhub_mongodb_api/Tasks/`
-  - In-repo: `README.md`, `docs/openapi.yaml`, `src/...`, `test/...`, `tasks/...`
+## External repository boundaries
+
+Task planning and execution in **this API repo** (`mentorhub_mentor_api`) must not read or depend on other sibling repositories for input context, except:
+
+- **`../mentorhub`** — platform standards and shared documentation (e.g. `DeveloperEdition/standards/api_standards.md`).
+- **`../mentorhub_api_utils`** — shared Python utilities used by domain APIs (e.g. `MongoIO`, Flask helpers, `README.md`).
+
+Do **not** reference paths under `mentorhub_mongodb_api`, other domain API repos, SPAs, or CloudFormation repos in task **Context** or **Goals**. If work in another repository is a prerequisite, describe it as an **external prerequisite** in prose (e.g. “MongoDB dictionary must include field X”) and set **Status** to `Blocked` until a human confirms it — do not link to or read files in that repo.
+
+## MongoDB dictionary schemas
+
+**Definitive** MongoDB collection/dictionary schema information must come from the **running MongoDB configurator service** (`mentorhub_mongodb_api`), not from files in the `mentorhub_mongodb_api` repository.
+
+Start the backing database if needed (`pipenv run db`), then fetch the latest JSON schema with `curl`:
+
+```bash
+curl -X GET "http://localhost:8383/api/configurations/json_schema/<Dictionary>.yaml/latest/" -H "accept: application/json"
+```
+
+Replace `<Dictionary>` with the collection name (e.g. `Path`, `Resource`, `Note`). Use this response as the source of truth when updating `docs/openapi.yaml` component schemas or when implementing service projections. Do **not** use deprecated paths under `../mentorhub/Specifications/schemas/`.
+
+If the configurator is unavailable, set the task **Status** to `Blocked` and stop — do not fall back to dictionary YAML files in the `mentorhub_mongodb_api` repo.
 
 ## Dependency management
 
@@ -103,20 +126,4 @@ Service code must route all MongoDB I/O through **`MongoIO`** (`api_utils.mongo_
 
 When planning or reviewing tasks, include this rule in **Context** or **Goals** for any work that touches `src/services/`. If a task cannot comply without an upstream `api_utils` change, document the gap and any temporary exception in that task’s **Execution Notes** — not here.
 
-Reference: `../mentorhub_api_utils/api_utils/mongo_utils/mongo_io.py`, `../mentorhub/DeveloperEdition/standards/api_standards.md`, and shipped task `SHIPPED.L070.implement_plan_steps_service.md`.
-
-## Shared services (`api_utils.services`)
-
-Reusable, model-like domain services live in `api_utils.services`. How this repo consumes them depends on how much of the domain is already upstream:
-
-- **Fully-upstream domains** — when a domain's behavior lives entirely in `api_utils.services` with no mentor-local logic, call the shared service **directly from the route layer** (`src/routes/`). Do **not** add a thin `src/services/` module whose only job is to re-call the shared service — that indirection is dead code. (e.g. Aggregation, Note.)
-- **Partially-local domains** — when a domain still has mentor-local pieces (local CRUD, RBAC, or composition) that have not been harvested yet, keep a `src/services/` service that **delegates** its list/read to the shared service and retains only the local pieces. (e.g. Path, Resource, Event.)
-- **Harvest candidates** — domains with substantial local logic intended to move upstream stay local and are tracked with a cross-repo `ISSUE.mentorhub_api_utils.*.md` harvest artifact (paste-ready for planning in `mentorhub_api_utils`); the eventual switch to direct consumption is completed via `ISSUE.mentorhub_mentor_api.adopt_harvested_services.md`.
-
-Blueprints/routes/server registration are always mentor-local — `api_utils` ships services, not this repo's Flask blueprints.
-
-## Sample task file
-
-For a complete example of a well‑formed `Run as needed` task, see:
-
-- `AS_NEEDED.T998.example_update_openapi.md`
+Reference: `../mentorhub_api_utils/api_utils/mongo_utils/mongo_io.py`, `../mentorhub/DeveloperEdition/standards/api_standards.md`, and shipped task `SHIPPED.L070.refactor_services_to_mongoio.md`.

@@ -11,14 +11,14 @@ Now orchestrate all Pending Tasks as outlined below. Use an **orchestration agen
 1. **Orchestrator** discovers all tasks, respects dependencies, and determines execution order.
    - **Task Selection**: Select only `PENDING.*` tasks.
    - **Execution order**: Review all PENDING tasks and order dependencies first.
-   - Schedule **concurrent** agents if no dependencies exist.
-2. **For each task**, the orchestrator launches a new agent with:
+   - Do not schedule **concurrent** agents to avoid testing collisions.
+2. **For each task**, the orchestrator selects an appropriate model for the task. Most tasks should not require high reasoning models. Never use GROK models. Launch a new agent with:
    - The task file path
    - Any outputs from prior tasks (e.g. "L010 complete; Profile schema updated in openapi.yaml")
 3. **Sub-agent** executes only that task: read context, implement, test, update task notes.
-4. **Orchestrator Confirmation**: The orchestrator should repeat testing as outlined in the task
+4. **Orchestrator Confirmation**: The orchestrator should repeat drop/config testing as outlined in the task.
 4. **Commit Changes**: The orchestrator is responsible for a commit, with a meaningful message, and a push.
-5. **Mark Shipped** by updating the task status, and renaming the task file like `SHIPPED.L010_update_profile_openapi.md`.
+5. **Mark Shipped** by updating the task status, and renaming the task file like `SHIPPED.T010_update_profile_data.md`.
 6. **Orchestrator** after the commit, moves to the next task.
 
 **Task Failure Case**: In the event a task fails, execution should halt and the developer should receive a summary of the current state and error condition that caused the failure.
@@ -51,8 +51,9 @@ The steps below apply to the agent that executes a task.
    For every task, the agent should:
    - **Review Context and Goals**: Read all referenced input/context files.
    - **Plan changes**: Summarize the planned approach in the **Execution Notes** section of the task file.
-   - **Implement changes**: Update code, configuration, docs, etc., as required — only files listed under **Outputs**.
+   - **Implement changes**: Update configuration, docs, etc., as required — only files listed under **Outputs**.
    - **Testing**: Follow the instructions in the task file's **Testing Expectations** section.
 
 3. **Completion and documentation**
    - After successful testing, update **Execution Notes** with summary and test results.
+   - The sub agent does not need to commit changes, the orchestrating agent handles that.
