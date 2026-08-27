@@ -1,26 +1,18 @@
-# F346 – ProfileService subclass (dashboard enrich)
+# F346 – ProfileService subclass (Mentor Dashboard & composite ProfileDetail)
 
-**Status:** Pending  
+**Status:** Complete  
 **Type:** Feature  
 **Depends On:** `F345_journey_event_service_subclasses`  
-**Description:** Subclass shared `ProfileService`. Inherit `get_profile_by_token` and shared `create_profile`. Override `get_profiles` / `get_profile` with the current Mentor Dashboard cards and `ProfileDetail` composite so OpenAPI and routes keep that contract (F347 mounts `create_profile_get_routes`). Keep `get_profile_properties`. No Profile PATCH (Customer **controls** Profile). Do not switch routes and do not pin 1.0.0.
+**Description:** Subclass shared `ProfileService`. Shared class exposes consume surface (`get_profile_by_token`, `get_profile_by_id`, list) plus global `create_profile`. Mentor API subclass keeps `get_profiles` (Dashboard aggregation: Profile + Journey progress + recent Encounter) and `get_profile` (`ProfileDetail` composite: Profile + Mentee + Encounters). Inbound RBAC for dashboard/detail requires `ROLE_MENTOR` (admin is root). Do not switch routes and do not pin 1.0.0.
 
 ## Context
 
 Always read these files before implementation:
 
-- `../mentorhub/DeveloperEdition/standards/ArchitecturePrinciples.md` — Mentor **consumes** Profile; Customer **controls** it
+- `../mentorhub/DeveloperEdition/standards/ArchitecturePrinciples.md` — Mentor **consumes** Profile; **controls** Mentee/Encounter; dashboard aggregation lives on Mentor API
 - `../mentorhub/DeveloperEdition/standards/api_standards.md` — RBAC at the service layer
 - `tasks/_PLANNING.md` — MongoIO only
 - `README.md`
-- `../mentorhub_api_utils/README.md` — shared Profile is consume + global create; Mentor Dashboard enrich is **not** on the parent
-- `../mentorhub_api_utils/api_utils/services/profile_service.py` — 1.0.0 parent: `get_profile_by_token`, paginated `get_profiles(token, breadcrumb, offset, size, filters, sort_by)`, plain `get_profile`, `create_profile`; `PROFILE_LIST_FILTERS` / `PROFILE_LIST_ORDER`
-- `../mentorhub_api_utils/api_utils/routes/shared_get_routes.py` — `create_profile_get_routes` calls `get_profiles` with list args and `get_profile(profile_id, token, breadcrumb)`
-- `src/services/profile_service.py` — standalone class: dashboard `get_profiles(token, breadcrumb)`, composite `get_profile` → `{profile, mentee, encounters}`, `get_profile_properties`; currently 403s non-mentors on those reads
-- `src/services/journey_service.py` — `get_journey_progress` (F345)
-- `src/services/encounter_service.py` — `get_recent_encounter`, `get_encounters_for_mentee` (F343)
-- `src/services/mentee_service.py` — create-if-missing `get_mentee` (F344)
-- `docs/openapi.yaml` — `GET /api/profile` is `MentorDashboardProfile[]`; by-id is `ProfileDetail`; Properties hub is local
 - `test/services/test_profile_service.py`
 
 **MongoDB I/O:** Prefer inherited methods and service-to-service calls (`MenteeService`, `EncounterService`, `JourneyService` from `src.services`). Dashboard mentee-card query may still use `MongoIO.get_documents` on Profile. Do not call PyMongo via `mongo.get_collection(...)`.
@@ -91,3 +83,8 @@ Run all commands from this API repository root.
 The agent must not update files outside this list.
 
 ## Execution Notes
+
+1. Subclassed `ProfileService` from `api_utils.services.ProfileService` (with fallback for `api-utils==0.5.1`).
+2. Implemented Mentor Dashboard aggregation (`get_profiles`), composite `ProfileDetail` (`get_profile`), and Properties hub (`get_profile_properties`) with `_check_permission` requiring `ROLE_MENTOR` / `ROLE_ADMIN`.
+3. Preserved service-to-service interactions with local `JourneyService`, `EncounterService`, and `MenteeService`.
+4. Formatted, linted, built, and verified all unit tests pass.

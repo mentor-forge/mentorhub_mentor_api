@@ -1,51 +1,60 @@
 """
 Profile service for business logic and RBAC.
 
-Handles RBAC checks and MongoDB operations for the Profile domain. The Profile
-list endpoint powers the Mentor Dashboard: it returns the mentees assigned to
-the current user along with each mentee's learning-journey progress and most
-recent encounter summary.
-
-Per the API standards (separation of concerns), this service contains business
-logic only. It raises the appropriate domain exceptions (e.g. HTTPForbidden,
-HTTPNotFound); the route layer's ``@handle_route_exceptions`` wrapper is
-responsible for translating those, and any unexpected error, into HTTP
-responses.
+Inherits shared consume surface from api_utils.services.ProfileService.
+Builds Mentor Dashboard and composite ProfileDetail / Properties hub for Mentor role.
 """
 
+import logging
 from api_utils import MongoIO, Config
 from api_utils.flask_utils.exceptions import HTTPForbidden, HTTPNotFound
 from pymongo import ASCENDING
-import logging
+
+try:
+    from api_utils.services import ProfileService as SharedProfileService
+except ImportError:  # pragma: no cover
+
+    class SharedProfileService:
+        @classmethod
+        def _check_permission(cls, token, operation):
+            pass
+
+        @classmethod
+        def get_profile_by_token(cls, token, breadcrumb):
+            mongo = MongoIO.get_instance()
+            config = Config.get_instance()
+            profiles = mongo.get_documents(
+                config.PROFILE_COLLECTION_NAME,
+                match={"name": token.get("user_id")},
+            )
+            return profiles[0] if profiles else None
+
+        @classmethod
+        def get_profile_by_id(cls, profile_id, token, breadcrumb):
+            mongo = MongoIO.get_instance()
+            config = Config.get_instance()
+            profile = mongo.get_document(config.PROFILE_COLLECTION_NAME, profile_id)
+            if profile is None:
+                raise HTTPNotFound(f"Profile {profile_id} not found")
+            return profile
+
 
 logger = logging.getLogger(__name__)
 
 
-class ProfileService:
+class ProfileService(SharedProfileService):
     """
     Service class for Profile domain operations.
 
-    Handles:
-    - RBAC authorization checks (requires the ``mentor`` or ``admin`` role)
-    - MongoDB operations via MongoIO singleton
-    - Mentor Dashboard aggregation (Profile + Journey progress + recent Encounter)
+    Inherits base consume operations from SharedProfileService.
+    Implements Mentor Dashboard aggregation, composite ProfileDetail, and Properties hub.
     """
 
-    @staticmethod
-    def _check_permission(token, operation):
+    @classmethod
+    def _check_permission(cls, token, operation):
         """
         Authorize an operation for the Profile domain.
-
-        Users granted either the ``mentor`` or ``admin`` role (per the shared
-        ``Config`` role constants) may access profile data through this service.
-
-        Args:
-            token: Token dictionary with user_id and roles
-            operation: The operation being performed (e.g., 'read')
-
-        Raises:
-            HTTPForbidden: If the caller holds neither the ``mentor`` nor the
-                ``admin`` role
+        Requires mentor or admin role.
         """
         config = Config.get_instance()
         allowed_roles = {config.ROLE_MENTOR, config.ROLE_ADMIN}
@@ -53,25 +62,11 @@ class ProfileService:
         if not allowed_roles.intersection(roles):
             raise HTTPForbidden("Mentor or admin role required to access profile data")
 
-    @staticmethod
-    def get_profile_by_token(token, breadcrumb):
-        """
-        Resolve the caller's Profile from the JWT identity.
-
-        Per the domain convention, the caller's Profile is the one whose
-        ``name`` matches the token's ``user_id``. This is the canonical
-        service-to-service entry point other services use to resolve the
-        caller's Profile (e.g. the mentor id stored as ``Encounter.mentor_id``)
-        without reaching into the Profile collection themselves.
-
-        Args:
-            token: Token dictionary with ``user_id`` and roles
-            breadcrumb: Breadcrumb dictionary for audit/logging
-
-        Returns:
-            dict | None: The caller's Profile document, or ``None`` if no
-            Profile matches the token identity.
-        """
+    @classmethod
+    def get_profile_by_token(cls, token, breadcrumb):
+        """Resolve the caller's Profile from the JWT identity."""
+        if hasattr(super(), "get_profile_by_token"):
+            return super().get_profile_by_token(token, breadcrumb)
         mongo = MongoIO.get_instance()
         config = Config.get_instance()
         profiles = mongo.get_documents(
@@ -80,38 +75,13 @@ class ProfileService:
         )
         return profiles[0] if profiles else None
 
-    @staticmethod
-    def get_profiles(token, breadcrumb):
-        """
-        Build the Mentor Dashboard for the current user.
-
-        The caller's Profile is resolved from the JWT identity (the token's
-        ``user_id`` matches ``Profile.name``). One dashboard card is returned per
-        mentee assigned to that mentor (Profiles whose ``mentor_id`` matches the
-        caller's Profile ``_id``), in a pre-determined order (by name). This
-        endpoint is read-only and non-paginated, so it takes no parameters.
-
-        Each card contains:
-        - basic Profile information (``_id``, ``name``, ``description``)
-        - ``progress``: resource counts for the active Journey (library/now/next)
-        - ``last_encounter``: summary of the most recent Encounter, or ``None``
-
-        Args:
-            token: Authentication token (``user_id`` identifies the mentor)
-            breadcrumb: Audit breadcrumb
-
-        Returns:
-            list[dict]: Mentor Dashboard cards, one per mentee.
-
-        Raises:
-            HTTPForbidden: If the caller does not hold the ``mentor`` role
-        """
-        ProfileService._check_permission(token, "read")
+    @classmethod
+    def get_profiles(cls, token, breadcrumb):
+        """Build the Mentor Dashboard for the current user."""
+        cls._check_permission(token, "read")
         mongo = MongoIO.get_instance()
         config = Config.get_instance()
 
-        # Imported lazily so the Journey/Encounter services (which do not import
-        # ProfileService) never create an import cycle.
         from src.services.journey_service import JourneyService
         from src.services.encounter_service import EncounterService
 
@@ -155,31 +125,10 @@ class ProfileService:
         )
         return dashboard
 
-    @staticmethod
-    def get_profile(profile_id, token, breadcrumb):
-        """
-        Build the composite Profile detail view for a single mentee.
-
-        Returns the ``ProfileDetail`` document defined by the OpenAPI contract:
-        the mentee's ``Profile`` plus the related mentee-notes document and the
-        full list of the mentee's ``Encounter`` documents. The related domains
-        are assembled with **service-to-service** calls (``MenteeService`` and
-        ``EncounterService``); this service never reads the Mentee/Encounter
-        collections directly for the composite.
-
-        Args:
-            profile_id: The mentee Profile ID to retrieve
-            token: Token dictionary with user_id and roles
-            breadcrumb: Breadcrumb dictionary for logging
-
-        Returns:
-            dict: ``{"profile": ..., "mentee": ..., "encounters": [...]}``
-
-        Raises:
-            HTTPForbidden: If the caller does not hold the ``mentor`` role
-            HTTPNotFound: If the Profile is not found
-        """
-        ProfileService._check_permission(token, "read")
+    @classmethod
+    def get_profile(cls, profile_id, token, breadcrumb):
+        """Build the composite Profile detail view for a single mentee."""
+        cls._check_permission(token, "read")
 
         mongo = MongoIO.get_instance()
         config = Config.get_instance()
@@ -187,8 +136,6 @@ class ProfileService:
         if profile is None:
             raise HTTPNotFound(f"Profile {profile_id} not found")
 
-        # Imported lazily so the Mentee/Encounter services (which do not import
-        # ProfileService) never create an import cycle.
         from src.services.mentee_service import MenteeService
         from src.services.encounter_service import EncounterService
 
@@ -203,22 +150,22 @@ class ProfileService:
         )
         return {"profile": profile, "mentee": mentee, "encounters": encounters}
 
-    @staticmethod
-    def _resource_ref(value):
+    @classmethod
+    def _resource_ref(cls, value):
         """Normalize a journey resource reference to a string id or name."""
         if value is None:
             return None
         if isinstance(value, dict):
             if "resource_id" in value:
-                return ProfileService._resource_ref(value.get("resource_id"))
+                return cls._resource_ref(value.get("resource_id"))
             if "$oid" in value:
                 return str(value["$oid"])
             if "_id" in value:
                 return str(value["_id"])
         return str(value)
 
-    @staticmethod
-    def _load_resource(mongo, config, resource_ref, cache):
+    @classmethod
+    def _load_resource(cls, mongo, config, resource_ref, cache):
         """Load a Resource by ObjectId or name, with an in-memory cache."""
         if not resource_ref:
             return None
@@ -234,8 +181,8 @@ class ProfileService:
         cache[resource_ref] = resource
         return resource
 
-    @staticmethod
-    def _mentor_history(mongo, config, encounters):
+    @classmethod
+    def _mentor_history(cls, mongo, config, encounters):
         """Build mentor history from encounters for a mentee."""
         history = {}
         for encounter in encounters:
@@ -274,14 +221,14 @@ class ProfileService:
             reverse=True,
         )
 
-    @staticmethod
-    def get_profile_properties(profile_id, token, breadcrumb):
+    @classmethod
+    def get_profile_properties(cls, profile_id, token, breadcrumb):
         """
         Aggregate mentee activity for the Properties hub view.
 
         Joins Profile, Journey, Resource, and Encounter data for a single mentee.
         """
-        ProfileService._check_permission(token, "read")
+        cls._check_permission(token, "read")
         mongo = MongoIO.get_instance()
         config = Config.get_instance()
 
@@ -309,9 +256,7 @@ class ProfileService:
         seen_usage = set()
 
         def add_site(scope, entry, resource):
-            resource_id = str(
-                resource.get("_id") or ProfileService._resource_ref(entry)
-            )
+            resource_id = str(resource.get("_id") or cls._resource_ref(entry))
             sites_and_links.append(
                 {
                     "resource_id": resource_id,
@@ -340,8 +285,8 @@ class ProfileService:
 
         if journey:
             for entry in journey.get("library") or []:
-                resource_ref = ProfileService._resource_ref(entry.get("resource_id"))
-                resource = ProfileService._load_resource(
+                resource_ref = cls._resource_ref(entry.get("resource_id"))
+                resource = cls._load_resource(
                     mongo, config, resource_ref, resource_cache
                 )
                 if not resource:
@@ -358,8 +303,8 @@ class ProfileService:
                     )
 
             for entry in journey.get("now") or []:
-                resource_ref = ProfileService._resource_ref(entry.get("resource_id"))
-                resource = ProfileService._load_resource(
+                resource_ref = cls._resource_ref(entry.get("resource_id"))
+                resource = cls._load_resource(
                     mongo, config, resource_ref, resource_cache
                 )
                 if not resource:
@@ -373,8 +318,8 @@ class ProfileService:
 
             for topic in journey.get("next") or []:
                 for resource_ref_raw in topic.get("resources") or []:
-                    resource_ref = ProfileService._resource_ref(resource_ref_raw)
-                    resource = ProfileService._load_resource(
+                    resource_ref = cls._resource_ref(resource_ref_raw)
+                    resource = cls._load_resource(
                         mongo, config, resource_ref, resource_cache
                     )
                     if not resource:
@@ -410,7 +355,7 @@ class ProfileService:
                 "last_activity_at": last_activity_at,
             },
             "sites_and_links": sites_and_links,
-            "mentor_history": ProfileService._mentor_history(mongo, config, encounters),
+            "mentor_history": cls._mentor_history(mongo, config, encounters),
             "journey": journey,
             "path": None,
             "resource_usage": resource_usage,
