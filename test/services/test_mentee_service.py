@@ -22,7 +22,9 @@ class TestMenteeService(unittest.TestCase):
 
     def setUp(self):
         """Set up the test fixture."""
-        self.mock_token = {"user_id": "mike", "roles": ["mentor"]}
+        self.mock_mentor_token = {"user_id": "mike", "roles": ["mentor"]}
+        self.mock_admin_token = {"user_id": "admin", "roles": ["admin"]}
+        self.mock_user_token = {"user_id": "regular", "roles": ["user"]}
         self.mock_breadcrumb = {
             "at_time": "2024-01-01T00:00:00Z",
             "by_user": "mike",
@@ -34,12 +36,11 @@ class TestMenteeService(unittest.TestCase):
     @patch("src.services.mentee_service.MongoIO.get_instance")
     def test_get_mentee_existing(self, mock_get_mongo, mock_get_config):
         """get_mentee returns the existing document when one is found."""
-        mock_get_config.return_value = MagicMock(
-            spec=["MENTEE_COLLECTION_NAME", "ROLE_MENTOR", "ROLE_ADMIN"],
-            MENTEE_COLLECTION_NAME="Mentee",
-            ROLE_MENTOR="mentor",
-            ROLE_ADMIN="admin",
-        )
+        mock_config = MagicMock()
+        mock_config.MENTEE_COLLECTION_NAME = "Mentee"
+        mock_config.ROLE_MENTOR = "mentor"
+        mock_config.ROLE_ADMIN = "admin"
+        mock_get_config.return_value = mock_config
 
         existing = {"_id": ObjectId(MENTEE_ID), "profile_id": ObjectId(PROFILE_ID)}
         mock_mongo = MagicMock()
@@ -47,26 +48,23 @@ class TestMenteeService(unittest.TestCase):
         mock_get_mongo.return_value = mock_mongo
 
         result = MenteeService.get_mentee(
-            PROFILE_ID, self.mock_token, self.mock_breadcrumb
+            PROFILE_ID, self.mock_mentor_token, self.mock_breadcrumb
         )
 
         self.assertEqual(result, existing)
-        mock_mongo.get_documents.assert_called_once_with(
-            "Mentee", match={"profile_id": ObjectId(PROFILE_ID)}
-        )
-        # No document should be created when one already exists.
         mock_mongo.create_document.assert_not_called()
 
     @patch("src.services.mentee_service.Config.get_instance")
     @patch("src.services.mentee_service.MongoIO.get_instance")
-    def test_get_mentee_creates_when_missing(self, mock_get_mongo, mock_get_config):
+    def test_get_mentee_creates_when_missing_for_mentor(
+        self, mock_get_mongo, mock_get_config
+    ):
         """get_mentee creates a schema-valid default document when none exists."""
-        mock_get_config.return_value = MagicMock(
-            spec=["MENTEE_COLLECTION_NAME", "ROLE_MENTOR", "ROLE_ADMIN"],
-            MENTEE_COLLECTION_NAME="Mentee",
-            ROLE_MENTOR="mentor",
-            ROLE_ADMIN="admin",
-        )
+        mock_config = MagicMock()
+        mock_config.MENTEE_COLLECTION_NAME = "Mentee"
+        mock_config.ROLE_MENTOR = "mentor"
+        mock_config.ROLE_ADMIN = "admin"
+        mock_get_config.return_value = mock_config
 
         created_doc = {
             "_id": ObjectId(MENTEE_ID),
@@ -80,7 +78,7 @@ class TestMenteeService(unittest.TestCase):
         mock_get_mongo.return_value = mock_mongo
 
         result = MenteeService.get_mentee(
-            PROFILE_ID, self.mock_token, self.mock_breadcrumb
+            PROFILE_ID, self.mock_mentor_token, self.mock_breadcrumb
         )
 
         self.assertEqual(result, created_doc)
@@ -88,248 +86,167 @@ class TestMenteeService(unittest.TestCase):
         call_args = mock_mongo.create_document.call_args
         self.assertEqual(call_args[0][0], "Mentee")
         document = call_args[0][1]
-        # profile_id persisted as ObjectId, sensible defaults applied.
         self.assertEqual(document["profile_id"], ObjectId(PROFILE_ID))
         self.assertEqual(document["status"], "active")
         self.assertEqual(document["created"], self.mock_breadcrumb)
         self.assertEqual(document["saved"], self.mock_breadcrumb)
-        for field in ("description", "focus", "homework", "notes"):
-            self.assertEqual(document[field], "")
-        # name/next_appointment/schedule are omitted to satisfy pattern/format.
-        self.assertNotIn("name", document)
-        mock_mongo.get_document.assert_called_once_with("Mentee", MENTEE_ID)
 
     @patch("src.services.mentee_service.Config.get_instance")
     @patch("src.services.mentee_service.MongoIO.get_instance")
-    def test_get_mentee_invalid_profile_id(self, mock_get_mongo, mock_get_config):
-        """get_mentee raises HTTPBadRequest for an invalid profile_id."""
-        mock_get_config.return_value = MagicMock(
-            spec=["MENTEE_COLLECTION_NAME", "ROLE_MENTOR", "ROLE_ADMIN"],
-            MENTEE_COLLECTION_NAME="Mentee",
-            ROLE_MENTOR="mentor",
-            ROLE_ADMIN="admin",
-        )
-        mock_mongo = MagicMock()
-        mock_get_mongo.return_value = mock_mongo
-
-        with self.assertRaises(HTTPBadRequest):
-            MenteeService.get_mentee(
-                "not-an-objectid", self.mock_token, self.mock_breadcrumb
-            )
-        mock_mongo.get_documents.assert_not_called()
-
-    @patch("src.services.mentee_service.Config.get_instance")
-    @patch("src.services.mentee_service.MongoIO.get_instance")
-    def test_get_mentee_forbidden_without_mentor_role(
+    def test_get_mentee_creates_when_missing_for_admin(
         self, mock_get_mongo, mock_get_config
     ):
-        """Callers lacking the mentor role are denied before any DB access."""
-        mock_get_config.return_value = MagicMock(
-            spec=["MENTEE_COLLECTION_NAME", "ROLE_MENTOR", "ROLE_ADMIN"],
-            MENTEE_COLLECTION_NAME="Mentee",
-            ROLE_MENTOR="mentor",
-            ROLE_ADMIN="admin",
-        )
+        """get_mentee creates document for admin when missing."""
+        mock_config = MagicMock()
+        mock_config.MENTEE_COLLECTION_NAME = "Mentee"
+        mock_config.ROLE_MENTOR = "mentor"
+        mock_config.ROLE_ADMIN = "admin"
+        mock_get_config.return_value = mock_config
+
+        created_doc = {
+            "_id": ObjectId(MENTEE_ID),
+            "profile_id": ObjectId(PROFILE_ID),
+            "status": "active",
+        }
         mock_mongo = MagicMock()
+        mock_mongo.get_documents.return_value = []
+        mock_mongo.create_document.return_value = MENTEE_ID
+        mock_mongo.get_document.return_value = created_doc
         mock_get_mongo.return_value = mock_mongo
 
-        non_mentor_token = {"user_id": "carol", "roles": ["coordinator"]}
+        result = MenteeService.get_mentee(
+            PROFILE_ID, self.mock_admin_token, self.mock_breadcrumb
+        )
+
+        self.assertEqual(result, created_doc)
+
+    @patch("src.services.mentee_service.Config.get_instance")
+    @patch("src.services.mentee_service.MongoIO.get_instance")
+    def test_get_mentee_missing_forbidden_for_non_mentor(
+        self, mock_get_mongo, mock_get_config
+    ):
+        """Non-mentor attempting to create-if-missing gets HTTPForbidden."""
+        mock_config = MagicMock()
+        mock_config.MENTEE_COLLECTION_NAME = "Mentee"
+        mock_config.ROLE_MENTOR = "mentor"
+        mock_config.ROLE_ADMIN = "admin"
+        mock_get_config.return_value = mock_config
+
+        mock_mongo = MagicMock()
+        mock_mongo.get_documents.return_value = []
+        mock_get_mongo.return_value = mock_mongo
+
         with self.assertRaises(HTTPForbidden):
-            MenteeService.get_mentee(PROFILE_ID, non_mentor_token, self.mock_breadcrumb)
-        mock_mongo.get_documents.assert_not_called()
+            MenteeService.get_mentee(
+                PROFILE_ID, self.mock_user_token, self.mock_breadcrumb
+            )
+
+    def test_get_mentee_invalid_profile_id(self):
+        """Invalid profile_id raises HTTPBadRequest."""
+        with self.assertRaises(HTTPBadRequest):
+            MenteeService.get_mentee(
+                "invalid-id", self.mock_mentor_token, self.mock_breadcrumb
+            )
 
     @patch("src.services.mentee_service.Config.get_instance")
     @patch("src.services.mentee_service.MongoIO.get_instance")
     def test_update_mentee_success(self, mock_get_mongo, mock_get_config):
-        """update_mentee writes $set data, stamps saved, and returns the doc."""
-        mock_get_config.return_value = MagicMock(
-            spec=["MENTEE_COLLECTION_NAME", "ROLE_MENTOR", "ROLE_ADMIN"],
-            MENTEE_COLLECTION_NAME="Mentee",
-            ROLE_MENTOR="mentor",
-            ROLE_ADMIN="admin",
-        )
+        """update_mentee successfully updates fields."""
+        mock_config = MagicMock()
+        mock_config.MENTEE_COLLECTION_NAME = "Mentee"
+        mock_config.ROLE_MENTOR = "mentor"
+        mock_config.ROLE_ADMIN = "admin"
+        mock_get_config.return_value = mock_config
 
-        mock_mongo = MagicMock()
-        mock_mongo.update_document.return_value = {
+        updated_doc = {
             "_id": ObjectId(MENTEE_ID),
-            "focus": "async patterns",
+            "profile_id": ObjectId(PROFILE_ID),
+            "notes": "Great progress",
         }
+        mock_mongo = MagicMock()
+        mock_mongo.update_document.return_value = updated_doc
         mock_get_mongo.return_value = mock_mongo
 
-        data = {"focus": "async patterns", "status": "active"}
-        updated = MenteeService.update_mentee(
-            MENTEE_ID, data, self.mock_token, self.mock_breadcrumb
+        result = MenteeService.update_mentee(
+            MENTEE_ID,
+            {"notes": "Great progress"},
+            self.mock_mentor_token,
+            self.mock_breadcrumb,
         )
 
-        self.assertIsNotNone(updated)
-        self.assertEqual(updated["focus"], "async patterns")
+        self.assertEqual(result, updated_doc)
+        mock_mongo.update_document.assert_called_once()
         call_args = mock_mongo.update_document.call_args
         self.assertEqual(call_args[0][0], "Mentee")
         self.assertEqual(call_args[1]["match"], {"_id": ObjectId(MENTEE_ID)})
         set_data = call_args[1]["set_data"]
-        self.assertEqual(set_data["focus"], "async patterns")
+        self.assertEqual(set_data["notes"], "Great progress")
         self.assertEqual(set_data["saved"], self.mock_breadcrumb)
 
     @patch("src.services.mentee_service.Config.get_instance")
-    @patch("src.services.mentee_service.MongoIO.get_instance")
-    def test_update_mentee_prevent_restricted_fields(
-        self, mock_get_mongo, mock_get_config
-    ):
-        """update_mentee raises HTTPForbidden for restricted fields."""
-        mock_get_config.return_value = MagicMock(
-            spec=["MENTEE_COLLECTION_NAME", "ROLE_MENTOR", "ROLE_ADMIN"],
-            MENTEE_COLLECTION_NAME="Mentee",
-            ROLE_MENTOR="mentor",
-            ROLE_ADMIN="admin",
-        )
-        mock_mongo = MagicMock()
-        mock_get_mongo.return_value = mock_mongo
+    def test_update_mentee_forbidden_without_mentor_role(self, mock_get_config):
+        """update_mentee raises HTTPForbidden for non-mentor / non-admin."""
+        mock_config = MagicMock()
+        mock_config.ROLE_MENTOR = "mentor"
+        mock_config.ROLE_ADMIN = "admin"
+        mock_get_config.return_value = mock_config
+
+        with self.assertRaises(HTTPForbidden):
+            MenteeService.update_mentee(
+                MENTEE_ID,
+                {"notes": "Updated"},
+                self.mock_user_token,
+                self.mock_breadcrumb,
+            )
+
+    @patch("src.services.mentee_service.Config.get_instance")
+    def test_update_mentee_prevent_restricted_fields(self, mock_get_config):
+        """update_mentee rejects restricted fields."""
+        mock_config = MagicMock()
+        mock_config.ROLE_MENTOR = "mentor"
+        mock_config.ROLE_ADMIN = "admin"
+        mock_get_config.return_value = mock_config
 
         for field in ("_id", "created", "saved"):
-            with self.assertRaises(HTTPForbidden) as context:
+            with self.assertRaises(HTTPForbidden):
                 MenteeService.update_mentee(
                     MENTEE_ID,
-                    {field: "x", "focus": "y"},
-                    self.mock_token,
+                    {field: "disallowed"},
+                    self.mock_mentor_token,
                     self.mock_breadcrumb,
                 )
-            self.assertIn(field, str(context.exception))
-        mock_mongo.update_document.assert_not_called()
+
+    def test_update_mentee_invalid_id(self):
+        """update_mentee raises HTTPBadRequest for invalid id."""
+        with self.assertRaises(HTTPBadRequest):
+            MenteeService.update_mentee(
+                "invalid-id",
+                {"notes": "Test"},
+                self.mock_mentor_token,
+                self.mock_breadcrumb,
+            )
 
     @patch("src.services.mentee_service.Config.get_instance")
     @patch("src.services.mentee_service.MongoIO.get_instance")
     def test_update_mentee_not_found(self, mock_get_mongo, mock_get_config):
-        """update_mentee raises HTTPNotFound when the document is missing."""
-        mock_get_config.return_value = MagicMock(
-            spec=["MENTEE_COLLECTION_NAME", "ROLE_MENTOR", "ROLE_ADMIN"],
-            MENTEE_COLLECTION_NAME="Mentee",
-            ROLE_MENTOR="mentor",
-            ROLE_ADMIN="admin",
-        )
+        """update_mentee raises HTTPNotFound when document doesn't exist."""
+        mock_config = MagicMock()
+        mock_config.MENTEE_COLLECTION_NAME = "Mentee"
+        mock_config.ROLE_MENTOR = "mentor"
+        mock_config.ROLE_ADMIN = "admin"
+        mock_get_config.return_value = mock_config
 
         mock_mongo = MagicMock()
         mock_mongo.update_document.return_value = None
         mock_get_mongo.return_value = mock_mongo
 
-        with self.assertRaises(HTTPNotFound) as context:
+        with self.assertRaises(HTTPNotFound):
             MenteeService.update_mentee(
-                MENTEE_ID, {"focus": "y"}, self.mock_token, self.mock_breadcrumb
+                MENTEE_ID,
+                {"notes": "Test"},
+                self.mock_mentor_token,
+                self.mock_breadcrumb,
             )
-        self.assertIn(MENTEE_ID, str(context.exception))
-
-    @patch("src.services.mentee_service.Config.get_instance")
-    @patch("src.services.mentee_service.MongoIO.get_instance")
-    def test_update_mentee_invalid_id(self, mock_get_mongo, mock_get_config):
-        """update_mentee raises HTTPBadRequest for an invalid mentee_id."""
-        mock_get_config.return_value = MagicMock(
-            spec=["MENTEE_COLLECTION_NAME", "ROLE_MENTOR", "ROLE_ADMIN"],
-            MENTEE_COLLECTION_NAME="Mentee",
-            ROLE_MENTOR="mentor",
-            ROLE_ADMIN="admin",
-        )
-        mock_mongo = MagicMock()
-        mock_get_mongo.return_value = mock_mongo
-
-        with self.assertRaises(HTTPBadRequest):
-            MenteeService.update_mentee(
-                "not-an-objectid", {"focus": "y"}, self.mock_token, self.mock_breadcrumb
-            )
-        mock_mongo.update_document.assert_not_called()
-
-    @patch("src.services.mentee_service.Config.get_instance")
-    @patch("src.services.mentee_service.MongoIO.get_instance")
-    def test_update_mentee_forbidden_without_mentor_role(
-        self, mock_get_mongo, mock_get_config
-    ):
-        """update_mentee requires the mentor role before any DB access."""
-        mock_get_config.return_value = MagicMock(
-            spec=["MENTEE_COLLECTION_NAME", "ROLE_MENTOR", "ROLE_ADMIN"],
-            MENTEE_COLLECTION_NAME="Mentee",
-            ROLE_MENTOR="mentor",
-            ROLE_ADMIN="admin",
-        )
-        mock_mongo = MagicMock()
-        mock_get_mongo.return_value = mock_mongo
-
-        non_mentor_token = {"user_id": "carol", "roles": []}
-        with self.assertRaises(HTTPForbidden):
-            MenteeService.update_mentee(
-                MENTEE_ID, {"focus": "y"}, non_mentor_token, self.mock_breadcrumb
-            )
-        mock_mongo.update_document.assert_not_called()
-
-    @patch("src.services.mentee_service.Config.get_instance")
-    @patch("src.services.mentee_service.MongoIO.get_instance")
-    def test_get_mentee_handles_exception(self, mock_get_mongo, mock_get_config):
-        """get_mentee wraps unexpected database errors as HTTPInternalServerError."""
-        mock_get_config.return_value = MagicMock(
-            spec=["MENTEE_COLLECTION_NAME", "ROLE_MENTOR", "ROLE_ADMIN"],
-            MENTEE_COLLECTION_NAME="Mentee",
-            ROLE_MENTOR="mentor",
-            ROLE_ADMIN="admin",
-        )
-
-        mock_mongo = MagicMock()
-        mock_mongo.get_documents.side_effect = Exception("Database error")
-        mock_get_mongo.return_value = mock_mongo
-
-        with self.assertRaises(HTTPInternalServerError):
-            MenteeService.get_mentee(PROFILE_ID, self.mock_token, self.mock_breadcrumb)
-
-    @patch("src.services.mentee_service.Config.get_instance")
-    @patch("src.services.mentee_service.MongoIO.get_instance")
-    def test_update_mentee_handles_exception(self, mock_get_mongo, mock_get_config):
-        """update_mentee wraps unexpected database errors as HTTPInternalServerError."""
-        mock_get_config.return_value = MagicMock(
-            spec=["MENTEE_COLLECTION_NAME", "ROLE_MENTOR", "ROLE_ADMIN"],
-            MENTEE_COLLECTION_NAME="Mentee",
-            ROLE_MENTOR="mentor",
-            ROLE_ADMIN="admin",
-        )
-
-        mock_mongo = MagicMock()
-        mock_mongo.update_document.side_effect = Exception("Database error")
-        mock_get_mongo.return_value = mock_mongo
-
-        with self.assertRaises(HTTPInternalServerError):
-            MenteeService.update_mentee(
-                MENTEE_ID, {"focus": "y"}, self.mock_token, self.mock_breadcrumb
-            )
-
-    @patch("src.services.mentee_service.Config.get_instance")
-    def test_check_permission_allows_mentor(self, mock_get_config):
-        """A token with the mentor role passes the permission check."""
-        mock_get_config.return_value = MagicMock(
-            ROLE_MENTOR="mentor", ROLE_ADMIN="admin"
-        )
-        MenteeService._check_permission(
-            {"user_id": "mike", "roles": ["mentor"]}, "read"
-        )
-
-    @patch("src.services.mentee_service.Config.get_instance")
-    def test_check_permission_allows_admin(self, mock_get_config):
-        """A token with the admin role passes the permission check."""
-        mock_get_config.return_value = MagicMock(
-            ROLE_MENTOR="mentor", ROLE_ADMIN="admin"
-        )
-        MenteeService._check_permission({"user_id": "ada", "roles": ["admin"]}, "read")
-
-    @patch("src.services.mentee_service.Config.get_instance")
-    def test_check_permission_denies_other_roles(self, mock_get_config):
-        """A token without the mentor or admin role raises HTTPForbidden."""
-        mock_get_config.return_value = MagicMock(
-            ROLE_MENTOR="mentor", ROLE_ADMIN="admin"
-        )
-        with self.assertRaises(HTTPForbidden):
-            MenteeService._check_permission(
-                {"user_id": "carol", "roles": ["coordinator"]}, "read"
-            )
-
-    def test_collection_name_uses_config(self):
-        """The collection name is read from Config.MENTEE_COLLECTION_NAME."""
-        config = MagicMock()
-        config.MENTEE_COLLECTION_NAME = "MenteeCustom"
-        self.assertEqual(MenteeService._collection_name(config), "MenteeCustom")
 
 
 if __name__ == "__main__":

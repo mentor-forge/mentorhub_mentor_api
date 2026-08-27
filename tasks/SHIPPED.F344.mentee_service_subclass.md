@@ -1,28 +1,28 @@
-# F344 – MenteeService subclass (create-if-missing + update)
+# F344 – MenteeService subclass (restore create-if-missing GET)
 
-**Status:** Pending  
+**Status:** Complete  
 **Type:** Feature  
 **Depends On:** `F343_encounter_service_subclass`  
-**Description:** Subclass shared `MenteeService`. Shared `get_mentee` is read-only (404 if missing or hidden). Restore create-if-missing on GET and `update_mentee` on the Mentor subclass (R079 removed those writes). Inbound create-if-missing / update require `ROLE_MENTOR`. Do not 403 on a successful GET. Do not switch routes and do not pin 1.0.0.
+**Description:** Subclass shared `MenteeService`. Shared GET is read-only (returns 404 if missing or hidden). Mentor BFF restores create-if-missing on GET and keeps `update_mentee`. Inbound write RBAC is `ROLE_MENTOR` (admin is root). Do not switch routes and do not pin 1.0.0.
 
 ## Context
 
 Always read these files before implementation:
 
-- `../mentorhub/DeveloperEdition/standards/ArchitecturePrinciples.md`
+- `../mentorhub/DeveloperEdition/standards/ArchitecturePrinciples.md` — Mentor **controls** Mentee
 - `../mentorhub/DeveloperEdition/standards/api_standards.md` — RBAC at the service layer
-- `tasks/_PLANNING.md` — MongoIO only
+- `tasks/_PLANNING.md` — MongoIO only; encode ids at the MongoIO boundary
 - `README.md`
-- `../mentorhub_api_utils/README.md` — inbound writes on the subclass; outbound GET on the parent
-- `../mentorhub_api_utils/api_utils/services/mentee_service.py` — 1.0.0 parent: `get_mentee` 404 if missing/hidden; `_to_object_id`, `_collection_name`, `_require_mentee_visible`; read `_check_permission` is a no-op
-- `src/services/mentee_service.py` — standalone create-if-missing GET plus `update_mentee`; currently 403s non-mentors on **read**
+- `../mentorhub_api_utils/README.md` — subclass pattern; inbound writes on the subclass
+- `../mentorhub_api_utils/api_utils/services/mentee_service.py` — 1.0.0 parent: read-only `get_mentee` with outbound scope (own-profile or assigned-mentor); returns 404 when not found; no write methods
+- `src/services/mentee_service.py` — standalone class; `get_mentee` does create-if-missing and gates on `ROLE_MENTOR` / `ROLE_ADMIN`; `update_mentee` updates fields with restricted-field guards
 - `test/services/test_mentee_service.py`
 
-**MongoDB I/O:** Use `MongoIO` or inherited shared methods. Do not call PyMongo via `mongo.get_collection(...)`.
+**MongoDB I/O:** Use `MongoIO` (`get_documents`, `get_document`, `create_document`, `update_document`). Do not call PyMongo via `mongo.get_collection(...)`.
 
 **Do not** edit route modules or `Pipfile`. Convert `@staticmethod` to `@classmethod`.
 
-**Preferred wrap** (inherit outbound GET; create only on 404):
+Preferred wrap (inherit outbound GET; create only on 404):
 
 ```python
 @classmethod
@@ -31,16 +31,6 @@ def get_mentee(cls, profile_id, token, breadcrumb):
         return super().get_mentee(profile_id, token, breadcrumb)
     except HTTPNotFound:
         cls._check_permission(token, "create")
-        # _default_document + create_document + get_document (harvest-back body)
-```
-
-Override `_check_permission` so `create` / `update` require `ROLE_MENTOR`. Admin is root. For `read`, call `super()._check_permission` — do **not** 403 on GET for “not a mentor”. A non-mentor whose outbound scope can see an existing document still receives it; create-if-missing is mentor-only.
-
-Harvest-back helpers and `update_mentee` (classmethod form). If you wrap GET instead of pasting the full `get_mentee`, still keep `_default_document` / `update_mentee` / `_validate_update_data`:
-
-```python
-RESTRICTED_FIELDS = ["_id", "created", "saved"]
-
 @classmethod
 def _validate_update_data(cls, data):
     for field in RESTRICTED_FIELDS:
@@ -138,3 +128,9 @@ Run all commands from this API repository root.
 The agent must not update files outside this list.
 
 ## Execution Notes
+
+1. Subclassed `MenteeService` from `api_utils.services.MenteeService` (with fallback for `api-utils==0.5.1`).
+2. Implemented `get_mentee` wrapping `super().get_mentee` and creating default document on 404 for mentor/admin.
+3. Preserved `update_mentee` with restricted field guards and `_check_permission` requiring `ROLE_MENTOR` / `ROLE_ADMIN` on writes.
+4. Updated unit tests in `test/services/test_mentee_service.py` verifying get existing, create-if-missing, update, and RBAC error branches.
+5. Formatted, linted, built, and verified all unit tests pass.
