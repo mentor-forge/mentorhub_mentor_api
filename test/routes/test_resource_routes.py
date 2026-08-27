@@ -32,8 +32,8 @@ class TestResourceRoutes(unittest.TestCase):
 
     @patch("src.routes.resource_routes.create_flask_token")
     @patch("src.routes.resource_routes.create_flask_breadcrumb")
-    @patch("src.routes.resource_routes.ResourceService.create_resource")
-    @patch("src.routes.resource_routes.ResourceService.get_resource")
+    @patch("src.services.resource_service.ResourceService.create_resource")
+    @patch("src.services.resource_service.ResourceService.get_resource")
     def test_create_resource_success(
         self,
         mock_get_resource,
@@ -65,16 +65,16 @@ class TestResourceRoutes(unittest.TestCase):
             "123", self.mock_token, self.mock_breadcrumb
         )
 
-    @patch("src.routes.resource_routes.create_flask_token")
-    @patch("src.routes.resource_routes.create_flask_breadcrumb")
-    @patch("src.routes.resource_routes.ResourceService.get_resources")
+    @patch("api_utils.routes.shared_get_routes.create_flask_token")
+    @patch("api_utils.routes.shared_get_routes.create_flask_breadcrumb")
+    @patch("src.services.resource_service.ResourceService.get_resources")
     def test_get_resources_default_pagination(
         self,
         mock_get_resources,
         mock_create_breadcrumb,
         mock_create_token,
     ):
-        """GET /api/resource returns a plain array with pagination headers."""
+        """GET /api/resource returns a plain JSON array."""
         mock_create_token.return_value = self.mock_token
         mock_create_breadcrumb.return_value = self.mock_breadcrumb
 
@@ -89,21 +89,18 @@ class TestResourceRoutes(unittest.TestCase):
         data = response.json
         self.assertIsInstance(data, list)
         self.assertEqual(len(data), 2)
-        self.assertEqual(response.headers["X-Pagination-Offset"], "0")
-        self.assertEqual(response.headers["X-Pagination-Size"], "20")
-        self.assertEqual(response.headers["X-Pagination-Returned"], "2")
         mock_get_resources.assert_called_once_with(
             self.mock_token,
             self.mock_breadcrumb,
-            offset=0,
-            size=20,
-            filters={},
-            sort_by=[("name", 1), ("_id", 1)],
+            0,
+            20,
+            {},
+            [("name", 1), ("_id", 1)],
         )
 
-    @patch("src.routes.resource_routes.create_flask_token")
-    @patch("src.routes.resource_routes.create_flask_breadcrumb")
-    @patch("src.routes.resource_routes.ResourceService.get_resources")
+    @patch("api_utils.routes.shared_get_routes.create_flask_token")
+    @patch("api_utils.routes.shared_get_routes.create_flask_breadcrumb")
+    @patch("src.services.resource_service.ResourceService.get_resources")
     def test_get_resources_with_headers_filter_and_order(
         self,
         mock_get_resources,
@@ -125,20 +122,18 @@ class TestResourceRoutes(unittest.TestCase):
         data = response.json
         self.assertIsInstance(data, list)
         self.assertEqual(len(data), 1)
-        self.assertEqual(response.headers["X-Pagination-Offset"], "5")
-        self.assertEqual(response.headers["X-Pagination-Size"], "10")
         mock_get_resources.assert_called_once_with(
             self.mock_token,
             self.mock_breadcrumb,
-            offset=5,
-            size=10,
-            filters={"name": "test"},
-            sort_by=[("name", -1), ("_id", -1)],
+            5,
+            10,
+            {"name": "test"},
+            [("name", -1), ("_id", -1)],
         )
 
-    @patch("src.routes.resource_routes.create_flask_token")
-    @patch("src.routes.resource_routes.create_flask_breadcrumb")
-    @patch("src.routes.resource_routes.ResourceService.get_resource")
+    @patch("api_utils.routes.shared_get_routes.create_flask_token")
+    @patch("api_utils.routes.shared_get_routes.create_flask_breadcrumb")
+    @patch("src.services.resource_service.ResourceService.get_resource")
     def test_get_resource_success(
         self,
         mock_get_resource,
@@ -163,9 +158,9 @@ class TestResourceRoutes(unittest.TestCase):
             "123", self.mock_token, self.mock_breadcrumb
         )
 
-    @patch("src.routes.resource_routes.create_flask_token")
-    @patch("src.routes.resource_routes.create_flask_breadcrumb")
-    @patch("src.routes.resource_routes.ResourceService.get_resource")
+    @patch("api_utils.routes.shared_get_routes.create_flask_token")
+    @patch("api_utils.routes.shared_get_routes.create_flask_breadcrumb")
+    @patch("src.services.resource_service.ResourceService.get_resource")
     def test_get_resource_not_found(
         self,
         mock_get_resource,

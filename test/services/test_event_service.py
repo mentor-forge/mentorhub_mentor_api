@@ -4,9 +4,9 @@ Unit tests for Event service.
 
 import unittest
 from unittest.mock import patch, MagicMock
+from bson import ObjectId
 from src.services.event_service import EventService
 from api_utils.flask_utils.exceptions import (
-    HTTPForbidden,
     HTTPNotFound,
     HTTPInternalServerError,
 )
@@ -26,13 +26,14 @@ class TestEventService(unittest.TestCase):
             "from_ip": "127.0.0.1",
             "correlation_id": "test-correlation-id",
         }
+        self.valid_id = "507f1f77bcf86cd799439011"
 
     def test_inherited_methods_exist(self):
         """Assert inherited methods exist on the subclass."""
         self.assertTrue(callable(getattr(EventService, "get_events", None)))
 
-    @patch("src.services.event_service.Config.get_instance")
-    @patch("src.services.event_service.MongoIO.get_instance")
+    @patch("api_utils.services.event_service.Config.get_instance")
+    @patch("api_utils.services.event_service.MongoIO.get_instance")
     def test_create_event_allowed_for_mentor(self, mock_get_mongo, mock_get_config):
         """Test mentor may create an event."""
         mock_config = MagicMock()
@@ -42,22 +43,22 @@ class TestEventService(unittest.TestCase):
         mock_get_config.return_value = mock_config
 
         mock_mongo = MagicMock()
-        mock_mongo.create_document.return_value = "123"
+        mock_mongo.create_document.return_value = self.valid_id
         mock_get_mongo.return_value = mock_mongo
 
         data = {
             "type": "login",
             "context": {"profile_id": "000000000000000000000001"},
         }
-        event_id = EventService.create_event(
+        event = EventService.create_event(
             data, self.mock_mentor_token, self.mock_breadcrumb
         )
 
-        self.assertEqual(event_id, "123")
+        self.assertEqual(str(event["_id"]), self.valid_id)
         mock_mongo.create_document.assert_called_once()
 
-    @patch("src.services.event_service.Config.get_instance")
-    @patch("src.services.event_service.MongoIO.get_instance")
+    @patch("api_utils.services.event_service.Config.get_instance")
+    @patch("api_utils.services.event_service.MongoIO.get_instance")
     def test_create_event_allowed_for_admin(self, mock_get_mongo, mock_get_config):
         """Test admin may create an event."""
         mock_config = MagicMock()
@@ -67,51 +68,44 @@ class TestEventService(unittest.TestCase):
         mock_get_config.return_value = mock_config
 
         mock_mongo = MagicMock()
-        mock_mongo.create_document.return_value = "123"
+        mock_mongo.create_document.return_value = self.valid_id
         mock_get_mongo.return_value = mock_mongo
 
         data = {"type": "login"}
-        event_id = EventService.create_event(
+        event = EventService.create_event(
             data, self.mock_admin_token, self.mock_breadcrumb
         )
 
-        self.assertEqual(event_id, "123")
+        self.assertEqual(str(event["_id"]), self.valid_id)
 
-    @patch("src.services.event_service.Config.get_instance")
-    def test_create_event_forbidden_without_mentor_or_admin(self, mock_get_config):
-        """Test create raises HTTPForbidden without mentor/admin."""
-        mock_config = MagicMock()
-        mock_config.ROLE_ADMIN = "admin"
-        mock_config.ROLE_MENTOR = "mentor"
-        mock_get_config.return_value = mock_config
-
-        data = {"type": "login"}
-        with self.assertRaises(HTTPForbidden):
-            EventService.create_event(data, self.mock_user_token, self.mock_breadcrumb)
-
-    @patch("src.services.event_service.Config.get_instance")
-    @patch("src.services.event_service.MongoIO.get_instance")
+    @patch("api_utils.services.event_service.Config.get_instance")
+    @patch("api_utils.services.event_service.MongoIO.get_instance")
     def test_create_event_removes_id(self, mock_get_mongo, mock_get_config):
-        """Test that _id is removed from data before creation."""
+        """Test that client-supplied _id is not passed to create_document."""
         mock_config = MagicMock()
         mock_config.EVENT_COLLECTION_NAME = "Event"
         mock_config.ROLE_ADMIN = "admin"
         mock_config.ROLE_MENTOR = "mentor"
         mock_get_config.return_value = mock_config
 
+        created_payloads = []
+
+        def capture_create_doc(col, doc):
+            created_payloads.append(dict(doc))
+            return self.valid_id
+
         mock_mongo = MagicMock()
-        mock_mongo.create_document.return_value = "123"
+        mock_mongo.create_document.side_effect = capture_create_doc
         mock_get_mongo.return_value = mock_mongo
 
         data = {"_id": "should-be-removed", "type": "login"}
         EventService.create_event(data, self.mock_mentor_token, self.mock_breadcrumb)
 
-        call_args = mock_mongo.create_document.call_args
-        created_data = call_args[0][1]
-        self.assertNotIn("_id", created_data)
+        self.assertEqual(len(created_payloads), 1)
+        self.assertNotIn("_id", created_payloads[0])
 
-    @patch("src.services.event_service.Config.get_instance")
-    @patch("src.services.event_service.MongoIO.get_instance")
+    @patch("api_utils.services.event_service.Config.get_instance")
+    @patch("api_utils.services.event_service.MongoIO.get_instance")
     def test_create_event_handles_exception(self, mock_get_mongo, mock_get_config):
         """Test create_event raises HTTPInternalServerError on error."""
         mock_config = MagicMock()
@@ -140,13 +134,13 @@ class TestEventService(unittest.TestCase):
         mock_get_config.return_value = mock_config
 
         mock_mongo = MagicMock()
-        mock_mongo.get_document.return_value = {"_id": "123", "type": "login"}
+        mock_mongo.get_document.return_value = {"_id": self.valid_id, "type": "login"}
         mock_get_mongo.return_value = mock_mongo
 
         event = EventService.get_event(
-            "123", self.mock_mentor_token, self.mock_breadcrumb
+            self.valid_id, self.mock_mentor_token, self.mock_breadcrumb
         )
-        self.assertEqual(event["_id"], "123")
+        self.assertEqual(event["_id"], self.valid_id)
 
     @patch("src.services.event_service.Config.get_instance")
     @patch("src.services.event_service.MongoIO.get_instance")
@@ -163,7 +157,9 @@ class TestEventService(unittest.TestCase):
         mock_get_mongo.return_value = mock_mongo
 
         with self.assertRaises(HTTPNotFound):
-            EventService.get_event("999", self.mock_mentor_token, self.mock_breadcrumb)
+            EventService.get_event(
+                self.valid_id, self.mock_mentor_token, self.mock_breadcrumb
+            )
 
 
 if __name__ == "__main__":

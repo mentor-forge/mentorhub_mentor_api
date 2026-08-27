@@ -13,31 +13,8 @@ from api_utils.flask_utils.exceptions import (
     HTTPInternalServerError,
 )
 from api_utils.mongo_utils import encode_document
+from api_utils.services import EncounterService as SharedEncounterService
 from src.services.plan_service import PlanService
-
-try:
-    from api_utils.services import EncounterService as SharedEncounterService
-except ImportError:  # pragma: no cover
-
-    class SharedEncounterService:
-        @classmethod
-        def _check_permission(cls, token, operation, breadcrumb):
-            pass
-
-        @classmethod
-        def get_encounter(cls, encounter_id, token, breadcrumb):
-            pass
-
-        @classmethod
-        def get_encounters_for_mentee(
-            cls, mentee_id, token, breadcrumb, offset=None, size=None
-        ):
-            pass
-
-        @classmethod
-        def get_recent_encounter(cls, mentee_id, token, breadcrumb):
-            pass
-
 
 logger = logging.getLogger(__name__)
 

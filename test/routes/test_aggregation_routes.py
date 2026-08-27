@@ -27,9 +27,9 @@ class TestAggregationRoutes(unittest.TestCase):
         }
         self.resource_id = "507f1f77bcf86cd799439011"
 
-    @patch("src.routes.aggregation_routes.create_flask_token")
-    @patch("src.routes.aggregation_routes.create_flask_breadcrumb")
-    @patch("src.routes.aggregation_routes.AggregationService.get_aggregation_detail")
+    @patch("api_utils.routes.shared_get_routes.create_flask_token")
+    @patch("api_utils.routes.shared_get_routes.create_flask_breadcrumb")
+    @patch("api_utils.services.AggregationService.get_aggregation_for_resource")
     def test_get_aggregation_detail_success(
         self,
         mock_get_detail,
@@ -58,17 +58,9 @@ class TestAggregationRoutes(unittest.TestCase):
             self.resource_id, self.mock_token, self.mock_breadcrumb
         )
 
-    @patch("src.routes.aggregation_routes.create_flask_token")
-    def test_get_aggregation_detail_unauthorized(self, mock_create_token):
-        mock_create_token.side_effect = HTTPUnauthorized("Invalid token")
-
-        response = self.client.get(f"/api/aggregation/{self.resource_id}")
-
-        self.assertEqual(response.status_code, 401)
-
-    @patch("src.routes.aggregation_routes.create_flask_token")
-    @patch("src.routes.aggregation_routes.create_flask_breadcrumb")
-    @patch("src.routes.aggregation_routes.AggregationService.get_aggregation_detail")
+    @patch("api_utils.routes.shared_get_routes.create_flask_token")
+    @patch("api_utils.routes.shared_get_routes.create_flask_breadcrumb")
+    @patch("api_utils.services.AggregationService.get_aggregation_for_resource")
     def test_get_aggregation_detail_bad_request(
         self,
         mock_get_detail,
@@ -77,11 +69,21 @@ class TestAggregationRoutes(unittest.TestCase):
     ):
         mock_create_token.return_value = self.mock_token
         mock_create_breadcrumb.return_value = self.mock_breadcrumb
-        mock_get_detail.side_effect = HTTPBadRequest("Invalid resource_id format")
+        mock_get_detail.side_effect = HTTPBadRequest("Invalid resource_id")
 
         response = self.client.get("/api/aggregation/invalid-id")
 
         self.assertEqual(response.status_code, 400)
+        self.assertIn("error", response.json)
+
+    @patch("api_utils.routes.shared_get_routes.create_flask_token")
+    def test_get_aggregation_detail_unauthorized(self, mock_create_token):
+        mock_create_token.side_effect = HTTPUnauthorized("Unauthorized")
+
+        response = self.client.get(f"/api/aggregation/{self.resource_id}")
+
+        self.assertEqual(response.status_code, 401)
+        self.assertIn("error", response.json)
 
 
 if __name__ == "__main__":

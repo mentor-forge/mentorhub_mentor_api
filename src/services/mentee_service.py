@@ -13,42 +13,9 @@ from api_utils.flask_utils.exceptions import (
     HTTPNotFound,
     HTTPInternalServerError,
 )
+from api_utils.services import MenteeService as SharedMenteeService
 from bson import ObjectId
 from bson.errors import InvalidId
-
-try:
-    from api_utils.services import MenteeService as SharedMenteeService
-except ImportError:  # pragma: no cover
-
-    class SharedMenteeService:
-        @classmethod
-        def _check_permission(cls, token, operation):
-            pass
-
-        @classmethod
-        def _collection_name(cls, config):
-            return config.MENTEE_COLLECTION_NAME
-
-        @classmethod
-        def _to_object_id(cls, value, label):
-            try:
-                return ObjectId(value)
-            except (InvalidId, TypeError):
-                raise HTTPBadRequest(f"Invalid {label}: {value}")
-
-        @classmethod
-        def get_mentee(cls, profile_id, token, breadcrumb):
-            profile_object_id = cls._to_object_id(profile_id, "profile_id")
-            mongo = MongoIO.get_instance()
-            config = Config.get_instance()
-            collection_name = cls._collection_name(config)
-            existing = mongo.get_documents(
-                collection_name, match={"profile_id": profile_object_id}
-            )
-            if existing:
-                return existing[0]
-            raise HTTPNotFound(f"Mentee for profile {profile_id} not found")
-
 
 logger = logging.getLogger(__name__)
 
@@ -93,8 +60,7 @@ class MenteeService(SharedMenteeService):
                     "Mentor or admin role required to access mentee data"
                 )
         else:
-            if hasattr(super(), "_check_permission"):
-                super()._check_permission(token, operation)
+            super()._check_permission(token, operation)
 
     @classmethod
     def _validate_update_data(cls, data):

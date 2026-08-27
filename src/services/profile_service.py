@@ -8,36 +8,8 @@ Builds Mentor Dashboard and composite ProfileDetail / Properties hub for Mentor 
 import logging
 from api_utils import MongoIO, Config
 from api_utils.flask_utils.exceptions import HTTPForbidden, HTTPNotFound
+from api_utils.services import ProfileService as SharedProfileService
 from pymongo import ASCENDING
-
-try:
-    from api_utils.services import ProfileService as SharedProfileService
-except ImportError:  # pragma: no cover
-
-    class SharedProfileService:
-        @classmethod
-        def _check_permission(cls, token, operation):
-            pass
-
-        @classmethod
-        def get_profile_by_token(cls, token, breadcrumb):
-            mongo = MongoIO.get_instance()
-            config = Config.get_instance()
-            profiles = mongo.get_documents(
-                config.PROFILE_COLLECTION_NAME,
-                match={"name": token.get("user_id")},
-            )
-            return profiles[0] if profiles else None
-
-        @classmethod
-        def get_profile_by_id(cls, profile_id, token, breadcrumb):
-            mongo = MongoIO.get_instance()
-            config = Config.get_instance()
-            profile = mongo.get_document(config.PROFILE_COLLECTION_NAME, profile_id)
-            if profile is None:
-                raise HTTPNotFound(f"Profile {profile_id} not found")
-            return profile
-
 
 logger = logging.getLogger(__name__)
 
@@ -65,18 +37,18 @@ class ProfileService(SharedProfileService):
     @classmethod
     def get_profile_by_token(cls, token, breadcrumb):
         """Resolve the caller's Profile from the JWT identity."""
-        if hasattr(super(), "get_profile_by_token"):
-            return super().get_profile_by_token(token, breadcrumb)
-        mongo = MongoIO.get_instance()
-        config = Config.get_instance()
-        profiles = mongo.get_documents(
-            config.PROFILE_COLLECTION_NAME,
-            match={"name": token.get("user_id")},
-        )
-        return profiles[0] if profiles else None
+        return super().get_profile_by_token(token, breadcrumb)
 
     @classmethod
-    def get_profiles(cls, token, breadcrumb):
+    def get_profiles(
+        cls,
+        token,
+        breadcrumb,
+        offset=None,
+        size=None,
+        filters=None,
+        sort_by=None,
+    ):
         """Build the Mentor Dashboard for the current user."""
         cls._check_permission(token, "read")
         mongo = MongoIO.get_instance()

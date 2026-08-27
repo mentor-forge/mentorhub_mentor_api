@@ -26,9 +26,9 @@ class TestProfileRoutes(unittest.TestCase):
             "correlation_id": "correlation_ID",
         }
 
-    @patch("src.routes.profile_routes.create_flask_token")
-    @patch("src.routes.profile_routes.create_flask_breadcrumb")
-    @patch("src.routes.profile_routes.ProfileService.get_profiles")
+    @patch("api_utils.routes.shared_get_routes.create_flask_token")
+    @patch("api_utils.routes.shared_get_routes.create_flask_breadcrumb")
+    @patch("src.services.profile_service.ProfileService.get_profiles")
     def test_get_profiles_success(
         self,
         mock_get_profiles,
@@ -66,35 +66,43 @@ class TestProfileRoutes(unittest.TestCase):
         mock_get_profiles.assert_called_once_with(
             self.mock_token,
             self.mock_breadcrumb,
+            0,
+            20,
+            {},
+            [("name", 1), ("_id", 1)],
         )
 
-    @patch("src.routes.profile_routes.create_flask_token")
-    @patch("src.routes.profile_routes.create_flask_breadcrumb")
-    @patch("src.routes.profile_routes.ProfileService.get_profiles")
-    def test_get_profiles_ignores_query_params(
+    @patch("api_utils.routes.shared_get_routes.create_flask_token")
+    @patch("api_utils.routes.shared_get_routes.create_flask_breadcrumb")
+    @patch("src.services.profile_service.ProfileService.get_profiles")
+    def test_get_profiles_with_query_params(
         self,
         mock_get_profiles,
         mock_create_breadcrumb,
         mock_create_token,
     ):
-        """Query parameters are ignored; the service is called with no filters."""
+        """Query parameters are parsed per filter/order spec and passed to service."""
         mock_create_token.return_value = self.mock_token
         mock_create_breadcrumb.return_value = self.mock_breadcrumb
 
         mock_get_profiles.return_value = []
 
-        response = self.client.get("/api/profile?name=test&limit=5")
+        response = self.client.get("/api/profile?name=test")
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json, [])
         mock_get_profiles.assert_called_once_with(
             self.mock_token,
             self.mock_breadcrumb,
+            0,
+            20,
+            {"name": "test"},
+            [("name", 1), ("_id", 1)],
         )
 
-    @patch("src.routes.profile_routes.create_flask_token")
-    @patch("src.routes.profile_routes.create_flask_breadcrumb")
-    @patch("src.routes.profile_routes.ProfileService.get_profile")
+    @patch("api_utils.routes.shared_get_routes.create_flask_token")
+    @patch("api_utils.routes.shared_get_routes.create_flask_breadcrumb")
+    @patch("src.services.profile_service.ProfileService.get_profile")
     def test_get_profile_success(
         self,
         mock_get_profile,
@@ -119,9 +127,9 @@ class TestProfileRoutes(unittest.TestCase):
             "123", self.mock_token, self.mock_breadcrumb
         )
 
-    @patch("src.routes.profile_routes.create_flask_token")
-    @patch("src.routes.profile_routes.create_flask_breadcrumb")
-    @patch("src.routes.profile_routes.ProfileService.get_profile")
+    @patch("api_utils.routes.shared_get_routes.create_flask_token")
+    @patch("api_utils.routes.shared_get_routes.create_flask_breadcrumb")
+    @patch("src.services.profile_service.ProfileService.get_profile")
     def test_get_profile_not_found(
         self,
         mock_get_profile,
@@ -141,7 +149,7 @@ class TestProfileRoutes(unittest.TestCase):
         self.assertEqual(response.status_code, 404)
         self.assertEqual(response.json["error"], "Profile 999 not found")
 
-    @patch("src.routes.profile_routes.create_flask_token")
+    @patch("api_utils.routes.shared_get_routes.create_flask_token")
     def test_get_profiles_unauthorized(self, mock_create_token):
         """Test GET /api/profile when token is invalid."""
         from api_utils.flask_utils.exceptions import HTTPUnauthorized
@@ -153,9 +161,9 @@ class TestProfileRoutes(unittest.TestCase):
         self.assertEqual(response.status_code, 401)
         self.assertIn("error", response.json)
 
-    @patch("src.routes.profile_routes.create_flask_token")
-    @patch("src.routes.profile_routes.create_flask_breadcrumb")
-    @patch("src.routes.profile_routes.ProfileService.get_profiles")
+    @patch("api_utils.routes.shared_get_routes.create_flask_token")
+    @patch("api_utils.routes.shared_get_routes.create_flask_breadcrumb")
+    @patch("src.services.profile_service.ProfileService.get_profiles")
     def test_get_profiles_forbidden(
         self,
         mock_get_profiles,
@@ -178,7 +186,7 @@ class TestProfileRoutes(unittest.TestCase):
 
     @patch("src.routes.profile_routes.create_flask_token")
     @patch("src.routes.profile_routes.create_flask_breadcrumb")
-    @patch("src.routes.profile_routes.ProfileService.get_profile_properties")
+    @patch("src.services.profile_service.ProfileService.get_profile_properties")
     def test_get_profile_properties_success(
         self,
         mock_get_profile_properties,

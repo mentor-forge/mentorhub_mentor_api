@@ -33,9 +33,9 @@ class TestMenteeRoutes(unittest.TestCase):
             "correlation_id": "correlation_ID",
         }
 
-    @patch("src.routes.mentee_routes.create_flask_token")
-    @patch("src.routes.mentee_routes.create_flask_breadcrumb")
-    @patch("src.routes.mentee_routes.MenteeService.get_mentee")
+    @patch("api_utils.routes.shared_get_routes.create_flask_token")
+    @patch("api_utils.routes.shared_get_routes.create_flask_breadcrumb")
+    @patch("src.services.mentee_service.MenteeService.get_mentee")
     def test_get_mentee_success(
         self,
         mock_get_mentee,
@@ -63,7 +63,7 @@ class TestMenteeRoutes(unittest.TestCase):
 
     @patch("src.routes.mentee_routes.create_flask_token")
     @patch("src.routes.mentee_routes.create_flask_breadcrumb")
-    @patch("src.routes.mentee_routes.MenteeService.update_mentee")
+    @patch("src.services.mentee_service.MenteeService.update_mentee")
     def test_update_mentee_success(
         self,
         mock_update_mentee,
@@ -94,9 +94,9 @@ class TestMenteeRoutes(unittest.TestCase):
             self.mock_breadcrumb,
         )
 
-    @patch("src.routes.mentee_routes.create_flask_token")
-    @patch("src.routes.mentee_routes.create_flask_breadcrumb")
-    @patch("src.routes.mentee_routes.MenteeService.get_mentee")
+    @patch("api_utils.routes.shared_get_routes.create_flask_token")
+    @patch("api_utils.routes.shared_get_routes.create_flask_breadcrumb")
+    @patch("src.services.mentee_service.MenteeService.get_mentee")
     def test_get_mentee_forbidden(
         self,
         mock_get_mentee,
@@ -120,7 +120,7 @@ class TestMenteeRoutes(unittest.TestCase):
 
     @patch("src.routes.mentee_routes.create_flask_token")
     @patch("src.routes.mentee_routes.create_flask_breadcrumb")
-    @patch("src.routes.mentee_routes.MenteeService.update_mentee")
+    @patch("src.services.mentee_service.MenteeService.update_mentee")
     def test_update_mentee_not_found(
         self,
         mock_update_mentee,
@@ -143,7 +143,7 @@ class TestMenteeRoutes(unittest.TestCase):
         self.assertEqual(response.status_code, 404)
         self.assertIn("error", response.json)
 
-    @patch("src.routes.mentee_routes.create_flask_token")
+    @patch("api_utils.routes.shared_get_routes.create_flask_token")
     def test_get_mentee_unauthorized(self, mock_create_token):
         """Test GET /api/mentee/<profile_id> when the token is invalid."""
         from api_utils.flask_utils.exceptions import HTTPUnauthorized

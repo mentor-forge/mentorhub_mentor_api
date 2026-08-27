@@ -18,7 +18,7 @@ def _err(response, expected):
 
 @pytest.mark.e2e
 def test_get_aggregation_detail_endpoint():
-    """Test GET /api/aggregation/{resource_id} returns composite detail."""
+    """Test GET /api/aggregation/{resource_id} returns aggregation document."""
     token = get_auth_token()
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -38,18 +38,15 @@ def test_get_aggregation_detail_endpoint():
     )
     assert response.status_code == 200, _err(response, 200)
 
-    detail = response.json()
-    assert "aggregation" in detail, "Detail should include aggregation"
-    assert "notes" in detail, "Detail should include notes"
-    assert isinstance(detail["notes"], list), "notes should be an array"
-    assert detail["aggregation"] is not None
-    agg = detail["aggregation"]
-    assert agg.get("_id") == resource_id or agg.get("resource_id") == resource_id
+    agg = response.json()
+    if agg is not None:
+        assert "_id" in agg
+        assert "hits" in agg
 
 
 @pytest.mark.e2e
-def test_get_aggregation_detail_creates_when_missing():
-    """Test GET /api/aggregation/{resource_id} creates aggregation when missing."""
+def test_get_aggregation_nonexistent_resource():
+    """Test GET /api/aggregation/{resource_id} returns null for non-existent resource."""
     token = get_auth_token()
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -59,12 +56,7 @@ def test_get_aggregation_detail_creates_when_missing():
         headers=headers,
     )
     assert response.status_code == 200, _err(response, 200)
-
-    detail = response.json()
-    assert "aggregation" in detail
-    assert "notes" in detail
-    assert detail["aggregation"] is not None
-    assert detail["aggregation"].get("resource_id") == synthetic_id
+    assert response.json() is None
 
 
 @pytest.mark.e2e

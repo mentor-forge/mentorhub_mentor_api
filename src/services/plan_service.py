@@ -12,33 +12,11 @@ from api_utils.flask_utils.exceptions import (
     HTTPNotFound,
     HTTPInternalServerError,
 )
-
-try:
-    from api_utils.services import PlanService as SharedPlanService
-    from api_utils.services.plan_service import (
-        PLAN_LIST_FILTERS,
-        PLAN_LIST_ORDER,
-    )
-except ImportError:  # pragma: no cover
-
-    class SharedPlanService:
-        @classmethod
-        def get_plans(
-            cls, token, breadcrumb, offset=None, size=None, filters=None, sort_by=None
-        ):
-            pass
-
-        @classmethod
-        def get_plan(cls, plan_id, token, breadcrumb):
-            pass
-
-    PLAN_LIST_FILTERS = {
-        "name": {"type": "contains", "field": "name"},
-    }
-    PLAN_LIST_ORDER = {
-        "default": {"field": "name", "order": "asc"},
-        "allowed": {"name": ("asc", "desc")},
-    }
+from api_utils.services import PlanService as SharedPlanService
+from api_utils.services.plan_service import (
+    PLAN_LIST_FILTERS,
+    PLAN_LIST_ORDER,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -72,8 +50,7 @@ class PlanService(SharedPlanService):
                     f"Mentor or admin role required to {operation} plan"
                 )
         else:
-            if hasattr(super(), "_check_permission"):
-                super()._check_permission(token, operation)
+            super()._check_permission(token, operation)
 
     @classmethod
     def _validate_update_data(cls, data):

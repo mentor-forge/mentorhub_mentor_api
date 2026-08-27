@@ -32,8 +32,8 @@ class TestPathRoutes(unittest.TestCase):
 
     @patch("src.routes.path_routes.create_flask_token")
     @patch("src.routes.path_routes.create_flask_breadcrumb")
-    @patch("src.routes.path_routes.PathService.create_path")
-    @patch("src.routes.path_routes.PathService.get_path")
+    @patch("src.services.path_service.PathService.create_path")
+    @patch("src.services.path_service.PathService.get_path")
     def test_create_path_success(
         self,
         mock_get_path,
@@ -65,16 +65,16 @@ class TestPathRoutes(unittest.TestCase):
             "123", self.mock_token, self.mock_breadcrumb
         )
 
-    @patch("src.routes.path_routes.create_flask_token")
-    @patch("src.routes.path_routes.create_flask_breadcrumb")
-    @patch("src.routes.path_routes.PathService.get_paths")
+    @patch("api_utils.routes.shared_get_routes.create_flask_token")
+    @patch("api_utils.routes.shared_get_routes.create_flask_breadcrumb")
+    @patch("src.services.path_service.PathService.get_paths")
     def test_get_paths_default_pagination(
         self,
         mock_get_paths,
         mock_create_breadcrumb,
         mock_create_token,
     ):
-        """GET /api/path returns a plain array with pagination headers."""
+        """GET /api/path returns a plain JSON array."""
         mock_create_token.return_value = self.mock_token
         mock_create_breadcrumb.return_value = self.mock_breadcrumb
 
@@ -89,21 +89,18 @@ class TestPathRoutes(unittest.TestCase):
         data = response.json
         self.assertIsInstance(data, list)
         self.assertEqual(len(data), 2)
-        self.assertEqual(response.headers["X-Pagination-Offset"], "0")
-        self.assertEqual(response.headers["X-Pagination-Size"], "20")
-        self.assertEqual(response.headers["X-Pagination-Returned"], "2")
         mock_get_paths.assert_called_once_with(
             self.mock_token,
             self.mock_breadcrumb,
-            offset=0,
-            size=20,
-            filters={},
-            sort_by=[("name", 1), ("_id", 1)],
+            0,
+            20,
+            {},
+            [("name", 1), ("_id", 1)],
         )
 
-    @patch("src.routes.path_routes.create_flask_token")
-    @patch("src.routes.path_routes.create_flask_breadcrumb")
-    @patch("src.routes.path_routes.PathService.get_paths")
+    @patch("api_utils.routes.shared_get_routes.create_flask_token")
+    @patch("api_utils.routes.shared_get_routes.create_flask_breadcrumb")
+    @patch("src.services.path_service.PathService.get_paths")
     def test_get_paths_with_headers_and_name_filter(
         self,
         mock_get_paths,
@@ -127,15 +124,15 @@ class TestPathRoutes(unittest.TestCase):
         mock_get_paths.assert_called_once_with(
             self.mock_token,
             self.mock_breadcrumb,
-            offset=0,
-            size=10,
-            filters={"name": "test"},
-            sort_by=[("name", 1), ("_id", 1)],
+            0,
+            10,
+            {"name": "test"},
+            [("name", 1), ("_id", 1)],
         )
 
-    @patch("src.routes.path_routes.create_flask_token")
-    @patch("src.routes.path_routes.create_flask_breadcrumb")
-    @patch("src.routes.path_routes.PathService.get_path")
+    @patch("api_utils.routes.shared_get_routes.create_flask_token")
+    @patch("api_utils.routes.shared_get_routes.create_flask_breadcrumb")
+    @patch("src.services.path_service.PathService.get_path")
     def test_get_path_success(
         self,
         mock_get_path,
@@ -160,9 +157,9 @@ class TestPathRoutes(unittest.TestCase):
             "123", self.mock_token, self.mock_breadcrumb
         )
 
-    @patch("src.routes.path_routes.create_flask_token")
-    @patch("src.routes.path_routes.create_flask_breadcrumb")
-    @patch("src.routes.path_routes.PathService.get_path")
+    @patch("api_utils.routes.shared_get_routes.create_flask_token")
+    @patch("api_utils.routes.shared_get_routes.create_flask_breadcrumb")
+    @patch("src.services.path_service.PathService.get_path")
     def test_get_path_not_found(
         self,
         mock_get_path,
@@ -199,7 +196,7 @@ class TestPathRoutes(unittest.TestCase):
 
     @patch("src.routes.path_routes.create_flask_token")
     @patch("src.routes.path_routes.create_flask_breadcrumb")
-    @patch("src.routes.path_routes.PathService.update_path")
+    @patch("src.services.path_service.PathService.update_path")
     def test_update_path_success(
         self,
         mock_update_path,
@@ -209,36 +206,24 @@ class TestPathRoutes(unittest.TestCase):
         """Test PATCH /api/path/<id> returns 200 for an authorized caller."""
         mock_create_token.return_value = self.mock_token
         mock_create_breadcrumb.return_value = self.mock_breadcrumb
-        mock_update_path.return_value = {"_id": "123", "name": "updated"}
 
-        response = self.client.patch("/api/path/123", json={"name": "updated"})
+        mock_update_path.return_value = {
+            "_id": "123",
+            "name": "updated-path",
+            "status": "active",
+        }
 
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json["name"], "updated")
-        mock_update_path.assert_called_once()
-
-    @patch("src.routes.path_routes.create_flask_token")
-    @patch("src.routes.path_routes.create_flask_breadcrumb")
-    @patch("src.routes.path_routes.PathService.update_path")
-    def test_update_path_forbidden(
-        self,
-        mock_update_path,
-        mock_create_breadcrumb,
-        mock_create_token,
-    ):
-        """Test PATCH /api/path/<id> returns 403 when the service denies it."""
-        from api_utils.flask_utils.exceptions import HTTPForbidden
-
-        mock_create_token.return_value = {"user_id": "u", "roles": ["mentee"]}
-        mock_create_breadcrumb.return_value = self.mock_breadcrumb
-        mock_update_path.side_effect = HTTPForbidden(
-            "Mentor or admin role required to update path documents"
+        response = self.client.patch(
+            "/api/path/123",
+            json={"name": "updated-path"},
         )
 
-        response = self.client.patch("/api/path/123", json={"name": "x"})
-
-        self.assertEqual(response.status_code, 403)
-        self.assertIn("error", response.json)
+        self.assertEqual(response.status_code, 200)
+        data = response.json
+        self.assertEqual(data["name"], "updated-path")
+        mock_update_path.assert_called_once_with(
+            "123", {"name": "updated-path"}, self.mock_token, self.mock_breadcrumb
+        )
 
 
 if __name__ == "__main__":

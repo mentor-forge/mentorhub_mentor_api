@@ -1,6 +1,6 @@
 # F347 – Pin api-utils 1.0.0 and wire shared GET factories
 
-**Status:** Pending  
+**Status:** Complete  
 **Type:** Feature  
 **Depends On:** `F346_profile_service_subclass`  
 **Description:** F-RA13 owns this pin. Bump `api-utils` from `0.5.1` to `1.0.0`, mount `create_*_get_routes(LocalService)` from `api_utils.routes.shared_get_routes`, and add control POST/PATCH on the returned blueprints. Routes keep `from src.services.<x> import <Y>` — never import shared service **classes**. Drop `X-Pagination-*` response headers on Resource/Path/Plan/Event lists. Lands in the **same PR** as F340–F346.
@@ -122,3 +122,11 @@ Run all commands from this API repository root.
 The agent must not update files outside this list.
 
 ## Execution Notes
+
+1. Pinned `api-utils==1.0.0` in `Pipfile` and updated `Pipfile.lock` via `scripts/pipenv-lock.sh` and `pipenv run install`.
+2. Wired shared GET factories from `api_utils.routes.shared_get_routes` in all domain routes (`resource_routes`, `path_routes`, `plan_routes`, `profile_routes`, `mentee_routes`, `encounter_routes`, `event_routes`, and `aggregation_routes`).
+3. Removed `_paginated_response` helpers and `X-Pagination-*` headers across routes and tests.
+4. Cleaned up fallback code in all service subclasses now that 1.0.0 is pinned and installed.
+5. Added and updated unit tests in `test/routes/` and `test/services/`.
+6. Verified with `pipenv run format`, `pipenv run lint`, `pipenv run build`, `pipenv run test`, `pipenv run container`, `pipenv run api`, and `pipenv run e2e` (all tests passed 100%).
+
