@@ -1,6 +1,6 @@
 # F341 – ResourceService and PathService subclasses (inherit GETs)
 
-**Status:** Pending  
+**Status:** Complete  
 **Type:** Feature  
 **Depends On:** `F340_openapi_1_0_0_list_gets`  
 **Description:** Convert Resource and Path from composition (`SharedXService.get_*` inside a standalone class) to inheritance. Keep local `create_*` / `update_*`. Inherit list/by-id GETs. Inbound write RBAC is `ROLE_MENTOR` (admin is root). Do not switch routes and do not pin 1.0.0 — existing routes still call the local class until F347.
@@ -92,3 +92,9 @@ Run all commands from this API repository root.
 The agent must not update files outside this list.
 
 ## Execution Notes
+
+1. Subclassed `ResourceService` from `api_utils.services.ResourceService`, inheriting `get_resources`, `get_resource`, and `get_resources_by_ids` while preserving local `create_resource`, `update_resource`, and `_check_permission` for mentor/admin write RBAC.
+2. Subclassed `PathService` from `api_utils.services.PathService`, inheriting `get_paths` and raw `get_path` while preserving local `create_path`, `update_path`, and `_check_permission` requiring mentor/admin for both create and update.
+3. Updated unit tests in `test/services/test_resource_service.py` and `test/services/test_path_service.py` to verify write RBAC (mentor/admin allowed, non-mentor forbidden), restricted field guards, and inherited GET methods existence.
+4. Formatted, linted, compiled, and passed full unit test suite.
+
