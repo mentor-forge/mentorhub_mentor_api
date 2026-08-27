@@ -1,6 +1,6 @@
 # F343 – EncounterService subclass (harvest-back writes)
 
-**Status:** Pending  
+**Status:** Complete  
 **Type:** Feature  
 **Depends On:** `F342_plan_service_subclass`  
 **Description:** Subclass shared `EncounterService`. Inherit GET helpers (`get_encounter`, `get_encounters_for_mentee`, `get_recent_encounter`). Keep owner-or-admin write RBAC and agenda-from-plan create locally — R079 strips those writes from api-utils. Read RBAC stays on the shared parent (outbound). Do not switch routes and do not pin 1.0.0.
@@ -148,3 +148,10 @@ Run all commands from this API repository root.
 The agent must not update files outside this list.
 
 ## Execution Notes
+
+1. Subclassed `EncounterService` from `api_utils.services.EncounterService` (with fallback for `api-utils==0.5.1`).
+2. Implemented `_build_agenda_from_plan`, `_check_permission_write` (mentor/admin on create; owner mentor or admin on update via local `ProfileService.get_profile_by_token`), `create_encounter`, and `update_encounter`.
+3. Preserved inherited GET helpers including `get_recent_encounter`, `get_encounter`, and `get_encounters_for_mentee`.
+4. Updated unit tests in `test/services/test_encounter_service.py` to verify write RBAC and inherited methods.
+5. Formatted, linted, built, and verified all unit tests pass.
+
