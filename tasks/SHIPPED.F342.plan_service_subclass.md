@@ -1,6 +1,6 @@
 # F342 – PlanService subclass (harvest-back writes)
 
-**Status:** Pending  
+**Status:** Complete  
 **Type:** Feature  
 **Depends On:** `F341_resource_path_service_subclasses`  
 **Description:** Subclass shared `PlanService` so list/by-id GETs come from api-utils. Keep `create_plan` / `update_plan` locally — R079 strips those from the shared class. Inbound write RBAC is `ROLE_MENTOR` (admin is root). Do not switch routes and do not pin 1.0.0.
@@ -104,3 +104,9 @@ Run all commands from this API repository root.
 The agent must not update files outside this list.
 
 ## Execution Notes
+
+1. Subclassed `PlanService` from `api_utils.services.PlanService` with backward-compatibility import fallback for `api-utils==0.5.1`.
+2. Implemented local `create_plan`, `update_plan`, `_validate_update_data`, and `_check_permission` requiring `ROLE_MENTOR` / `ROLE_ADMIN` on writes while allowing read operations.
+3. Updated unit tests in `test/services/test_plan_service.py` to verify write RBAC, restricted fields, and inherited method existence.
+4. Formatted, linted, compiled, and passed full unit test suite.
+
