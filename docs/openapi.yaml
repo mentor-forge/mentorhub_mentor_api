@@ -142,8 +142,7 @@ paths:
         Return a paginated array of Resource documents. Pagination uses the
         `offset`/`size` request headers; ordering uses the `sort_by`/`order`
         query params (default name asc); filters are query params. The response
-        body is a plain array; pagination metadata is returned via
-        `X-Pagination-*` response headers.
+        body is a plain JSON array.
       operationId: getResources
       security:
         - bearerAuth: []
@@ -175,13 +174,6 @@ paths:
       responses:
         '200':
           description: Successfully retrieved matching documents
-          headers:
-            X-Pagination-Offset:
-              $ref: '#/components/headers/X-Pagination-Offset'
-            X-Pagination-Size:
-              $ref: '#/components/headers/X-Pagination-Size'
-            X-Pagination-Returned:
-              $ref: '#/components/headers/X-Pagination-Returned'
           content:
             application/json:
               schema:
@@ -304,8 +296,7 @@ paths:
         Return a paginated array of Path documents. Pagination uses the
         `offset`/`size` request headers; ordering uses the `sort_by`/`order`
         query params (default name asc); `name` is an optional partial,
-        case-insensitive filter. The response body is a plain array; pagination
-        metadata is returned via `X-Pagination-*` response headers.
+        case-insensitive filter. The response body is a plain JSON array.
       operationId: getPaths
       security:
         - bearerAuth: []
@@ -324,13 +315,6 @@ paths:
       responses:
         '200':
           description: Successfully retrieved matching Path documents
-          headers:
-            X-Pagination-Offset:
-              $ref: '#/components/headers/X-Pagination-Offset'
-            X-Pagination-Size:
-              $ref: '#/components/headers/X-Pagination-Size'
-            X-Pagination-Returned:
-              $ref: '#/components/headers/X-Pagination-Returned'
           content:
             application/json:
               schema:
@@ -453,8 +437,7 @@ paths:
         Return a paginated array of Plan documents. Pagination uses the
         `offset`/`size` request headers; ordering uses the `sort_by`/`order`
         query params (default name asc); `name` is an optional partial,
-        case-insensitive filter. The response body is a plain array; pagination
-        metadata is returned via `X-Pagination-*` response headers.
+        case-insensitive filter. The response body is a plain JSON array.
       operationId: getPlans
       security:
         - bearerAuth: []
@@ -473,13 +456,6 @@ paths:
       responses:
         '200':
           description: Successfully retrieved matching Plan documents
-          headers:
-            X-Pagination-Offset:
-              $ref: '#/components/headers/X-Pagination-Offset'
-            X-Pagination-Size:
-              $ref: '#/components/headers/X-Pagination-Size'
-            X-Pagination-Returned:
-              $ref: '#/components/headers/X-Pagination-Returned'
           content:
             application/json:
               schema:
@@ -594,6 +570,44 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
   /api/encounter:
+    get:
+      tags:
+        - Encounter
+      summary: Get all Encounter documents for a mentee
+      description: |
+        Return a paginated array of Encounter documents for a specific mentee.
+        Pagination uses the `offset`/`size` request headers.
+      operationId: getEncounters
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OffsetHeader'
+        - $ref: '#/components/parameters/SizeHeader'
+        - name: mentee_id
+          in: query
+          required: true
+          description: Mentee profile ID to retrieve encounters for (MongoDB ObjectId)
+          schema:
+            type: string
+            pattern: '^[0-9a-fA-F]{24}$'
+            example: 507f1f77bcf86cd799439011
+      responses:
+        '200':
+          description: Successfully retrieved Encounter documents
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Encounter'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
     post:
       tags:
         - Encounter
@@ -720,8 +734,7 @@ paths:
         `offset`/`size` request headers; ordering uses the `sort_by`/`order`
         query params (default created.at_time desc). `type` is an optional
         comma-separated filter and `profile_id` scopes on context.profile_id.
-        The response body is a plain array; pagination metadata is returned via
-        `X-Pagination-*` response headers.
+        The response body is a plain JSON array.
       operationId: getEvents
       security:
         - bearerAuth: []
@@ -748,13 +761,6 @@ paths:
       responses:
         '200':
           description: Successfully retrieved Events
-          headers:
-            X-Pagination-Offset:
-              $ref: '#/components/headers/X-Pagination-Offset'
-            X-Pagination-Size:
-              $ref: '#/components/headers/X-Pagination-Size'
-            X-Pagination-Returned:
-              $ref: '#/components/headers/X-Pagination-Returned'
           content:
             application/json:
               schema:
@@ -1067,23 +1073,6 @@ components:
       schema:
         type: string
         enum: [asc, desc]
-
-  headers:
-    X-Pagination-Offset:
-      description: The offset applied to this list response.
-      schema:
-        type: integer
-        example: 0
-    X-Pagination-Size:
-      description: The page size applied to this list response.
-      schema:
-        type: integer
-        example: 20
-    X-Pagination-Returned:
-      description: The number of items returned in this response.
-      schema:
-        type: integer
-        example: 20
 
   responses:
     BadRequest:

@@ -1,6 +1,6 @@
 # F340 – OpenAPI for 1.0.0 list GETs (drop `X-Pagination-*`)
 
-**Status:** Pending  
+**Status:** Complete  
 **Type:** Feature  
 **Depends On:** none  
 **Description:** First task of F-RA13 (this repo’s only 1.0.0-wave issue; same PR as F341–F347). Document the 1.0.0 list GET contract that `create_*_get_routes` factories will mount in F347: JSON-array bodies, `offset`/`size` request headers only, no pagination response headers. Keep Mentor Dashboard, `ProfileDetail`, Properties hub, Event by-id, and all control POST/PATCH. No Python in this task. The `api-utils==1.0.0` pin is F347 so current `==0.5.1` routes stay green until subclasses exist.
@@ -99,3 +99,10 @@ Run all commands from this API repository root.
 The agent must not update files outside this list.
 
 ## Execution Notes
+
+1. Removed `X-Pagination-*` response headers from `GET /api/resource`, `GET /api/path`, `GET /api/plan`, and `GET /api/event` list 200 responses.
+2. Removed unused `components.headers` section containing `X-Pagination-Offset`, `X-Pagination-Size`, and `X-Pagination-Returned`.
+3. Added `GET /api/encounter` mentee-scoped list endpoint with required `mentee_id` query param, `offset`/`size` headers, and `Encounter[]` response body.
+4. Preserved existing dashboard (`GET /api/profile`), `ProfileDetail` (`GET /api/profile/{ProfileId}`), Properties (`GET /api/profile/{ProfileId}/properties`), Event by-id (`GET /api/event/{EventId}`), and control POST/PATCH endpoints.
+5. Validated OpenAPI spec with `python3 -c "import yaml; yaml.safe_load(open('docs/openapi.yaml'))"`, linting, and test suite.
+
