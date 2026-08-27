@@ -120,6 +120,13 @@ Do **not** use bare `pipenv install` or `pipenv install --dev` in task instructi
 
 Task **Testing Expectations** and **Goals** should call out `pipenv run install` whenever `Pipfile` or `Pipfile.lock` changes.
 
+### Shared Library / Version Bump Checklist
+When planning a task that upgrades or pins a shared package (e.g. `api-utils`):
+1. **Context & Audit**: Include `../mentorhub_api_utils/README.md` and relevant `api_utils` modules in **Context**.
+2. **Test Tokens & Claims**: Explicitly include `test/e2e/e2e_auth.py` in **Outputs** and **Goals** to sync test token claim schemas (e.g. `profile_id`, `customer_id`, `mentor_id`) with `api_utils.flask_utils.token.Token`.
+3. **API Signatures**: Audit helper signatures (`MongoIO`, `list_query`, `encoder`, exceptions) against active `api_utils` source code.
+4. **Testing Expectations**: Include the mandatory gate `pipenv run container && pipenv run api && pipenv run e2e` in the task's **Testing Expectations**.
+
 ## MongoDB access
 
 Service code must route all MongoDB I/O through **`MongoIO`** (`api_utils.mongo_utils.mongo_io`) — use `get_document`, `get_documents`, `create_document`, `update_document`, and `upsert_document` as appropriate. Do **not** call PyMongo directly (for example `mongo.get_collection(...)` followed by `collection.find`, `find_one`, `insert_one`, or similar).

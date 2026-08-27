@@ -23,7 +23,21 @@ Now orchestrate all Pending Tasks as outlined below. Use an **orchestration agen
 
 **Task Failure Case**: In the event a task fails, execution should halt and the developer should receive a summary of the current state and error condition that caused the failure.
 
-**All Tasks Complete**: Once all tasks have successfully completed, the orchestration agent should create a Pull Request in **this API repository** with a meaningful summary of all the commits made during the workflow. Notify the developer that the workflow was completed and provide a link to the PR.
+**Mandatory Pre-PR QA Gate**:
+Before opening a Pull Request, the orchestration agent MUST execute the full end-to-end integration and packaging gate:
+```bash
+pipenv run container && pipenv run api && pipenv run e2e
+```
+All E2E tests must pass 100%. If any test fails, pause and resolve the failure before proceeding.
+
+**All Tasks Complete**: Once all tasks and the mandatory Pre-PR QA Gate have successfully completed, the orchestration agent should create a Pull Request in **this API repository** with a meaningful summary of all the commits made during the workflow. Notify the developer that the workflow was completed and provide a link to the PR.
+
+## Shared Library / Version Bump Checklist
+
+When orchestrating a task that pins or upgrades a shared library (e.g. `api-utils`):
+1. **Audit Token & Claim Requirements**: Check `api_utils.flask_utils.token` for changes to required JWT claims (such as `profile_id`, `customer_id`, `mentor_id`) and immediately sync `test/e2e/e2e_auth.py` so black-box tests mint valid persona tokens.
+2. **Audit Method Signatures**: Verify helper signatures (`MongoIO`, `execute_list_query`, `encode_document`, exception classes) against active `api_utils` code to prevent positional/keyword argument mismatches.
+3. **Verify Full Stack**: Run `pipenv run container && pipenv run api && pipenv run e2e` to ensure live black-box compatibility with the upgraded library.
 
 ## Implementation Details
 - **Recommended filename pattern**:
