@@ -1,6 +1,6 @@
 # L330 – Aggregation GET route (route → `api_utils.services`) and server registration
 
-**Status**: Pending  
+**Status**: Complete  
 **Type**: Feature  
 **Depends On**: L310  
 **Description**: Expose `GET /api/aggregation/{resource_id}`, implemented by calling `api_utils.services.AggregationService.get_aggregation_detail` (shipped in the pinned `api-utils==0.5.1`) **directly from the route layer** — no local `src/services/aggregation_service.py` wrapper. The shared service is a pure pass-through with no mentor-local behavior, so per this repo's convention (see `_PLANNING.md` → *Shared services*) fully-upstream domains are adopted directly in the route rather than behind a thin delegating wrapper. The route/blueprint/server registration remain **mentor-local** (api_utils ships services, not this repo's blueprints). The endpoint returns Resource_Aggregation metrics plus the Notes for the resource (`{ aggregation, notes }`), using the shared aggregation detail (which composes notes internally) and the OpenAPI contract from L310.
@@ -69,4 +69,9 @@ The agent must not update files outside this list.
 
 ## Execution Notes
 
-_Reserved for the task execution agent._
+1. Created `src/routes/aggregation_routes.py` exposing `GET /<resource_id>` calling `api_utils.services.AggregationService.get_aggregation_detail` directly with exception handler wrapper and auth/breadcrumb helpers.
+2. Registered blueprint in `src/server.py` at `/api/aggregation` and updated route registration logging.
+3. Created unit tests in `test/routes/test_aggregation_routes.py` verifying 200 composite response, 401 on unauthorized, and 400 on bad request.
+4. Created E2E test in `test/e2e/test_aggregation.py`.
+5. Passed all formatting, linting, build, and unit tests (`pipenv run format && pipenv run lint && pipenv run build && pipenv run test`).
+
