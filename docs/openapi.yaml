@@ -42,6 +42,8 @@ tags:
     description: Profile operations (read-only)
   - name: Mentee
     description: Mentee notes operations (read, update)
+  - name: Aggregation
+    description: Resource aggregation metrics and related notes (read)
 paths:
   /api/config:
     get:
@@ -95,6 +97,41 @@ paths:
             text/plain:
               schema:
                 type: string
+
+  /api/aggregation/{resource_id}:
+    get:
+      tags:
+        - Aggregation
+      summary: Get Resource aggregation detail by resource ID
+      description: |
+        Retrieve Resource_Aggregation metrics and related Notes for a resource.
+        When no aggregation document exists for the resource, one is created with zeroed counters.
+        Any authenticated token holder may read.
+      operationId: getAggregationDetail
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: resource_id
+          in: path
+          required: true
+          description: The Resource ID (MongoDB ObjectId)
+          schema:
+            type: string
+            pattern: '^[0-9a-fA-F]{24}$'
+            example: 507f1f77bcf86cd799439011
+      responses:
+        '200':
+          description: Successfully retrieved aggregation detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AggregationDetail'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
 
   /api/resource:
     get:
@@ -2348,3 +2385,112 @@ components:
           type: string
           description: A brief summary of the transcript
           maxLength: 4096
+
+    Note:
+      type: object
+      description: A note about a resource
+      additionalProperties: false
+      properties:
+        _id:
+          type: string
+          description: The unique identifier for the Note
+          pattern: '^[0-9a-fA-F]{24}$'
+          example: 507f1f77bcf86cd799439011
+        resource_id:
+          type: string
+          description: The Resource ID this note is for
+          pattern: '^[0-9a-fA-F]{24}$'
+          example: 507f1f77bcf86cd799439011
+        profile_id:
+          type: string
+          description: The Profile ID of the person who took this note
+          pattern: '^[0-9a-fA-F]{24}$'
+          example: 507f1f77bcf86cd799439011
+        note:
+          type: string
+          description: The text of the note
+          maxLength: 4096
+          example: Found this resource very helpful for learning async patterns.
+        status:
+          type: string
+          description: Status of the document
+          enum:
+            - active
+            - archived
+          example: active
+        created:
+          $ref: '#/components/schemas/Breadcrumb'
+        saved:
+          $ref: '#/components/schemas/Breadcrumb'
+
+    ResourceAggregation:
+      type: object
+      description: Resource level rating and note count metrics
+      additionalProperties: false
+      required:
+        - _id
+        - resource_id
+        - rating_sum
+        - created
+        - last_saved
+      properties:
+        _id:
+          type: string
+          description: A unique identifier for Resource_Aggregation
+          pattern: '^[0-9a-fA-F]{24}$'
+          example: 507f1f77bcf86cd799439011
+        resource_id:
+          type: string
+          description: The Resource that is rated
+          pattern: '^[0-9a-fA-F]{24}$'
+          example: 507f1f77bcf86cd799439011
+        note_count:
+          type: integer
+          minimum: 0
+          description: The number of notes left on this resource
+          example: 3
+        completions:
+          type: integer
+          minimum: 0
+          description: The number of times this resource has been completed
+          example: 5
+        hits:
+          type: integer
+          minimum: 0
+          description: The number of times this URL has been clicked
+          example: 12
+        duration:
+          type: string
+          description: The total duration of all completions (ISO 8601 duration)
+          pattern: '^P(?!$)(\d+Y)?(\d+M)?(\d+W)?(\d+D)?(T(\d+H)?(\d+M)?(\d+(\.\d+)?S)?)?$'
+          example: PT2H30M
+        rating_count:
+          type: integer
+          minimum: 0
+          description: The number of ratings (should equal completions)
+          example: 5
+        rating_sum:
+          type: integer
+          minimum: 0
+          description: The sum of all ratings
+          example: 20
+        created:
+          $ref: '#/components/schemas/Breadcrumb'
+        last_saved:
+          $ref: '#/components/schemas/Breadcrumb'
+
+    AggregationDetail:
+      type: object
+      description: Composite aggregation view (metrics + related notes)
+      additionalProperties: false
+      required:
+        - aggregation
+        - notes
+      properties:
+        aggregation:
+          $ref: '#/components/schemas/ResourceAggregation'
+        notes:
+          type: array
+          description: Notes related to this resource
+          items:
+            $ref: '#/components/schemas/Note'
