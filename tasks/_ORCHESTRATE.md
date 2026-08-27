@@ -2,6 +2,8 @@
 
 This folder contains coding tasks that an orchestration agent can execute, based on the context and instructions in each task file. All of these tasks will only make changes in this API repo. The agent will first help to plan tasks, and then orchestrate execution of all Pending Tasks to implement a Feature.
 
+**Static Framework Guidelines**: `tasks/_ORCHESTRATE.md` and `tasks/_PLANNING.md` are static, standalone framework guidelines. Agents must NEVER modify `tasks/_ORCHESTRATE.md` or `tasks/_PLANNING.md` during task planning or orchestration (no adding run-specific checklists, notes, or execution logs to these files).
+
 ## Orchestration model: Feature Workflow
 
 Before starting the workflow, check to make sure you are not on the main branch, and that you can push on the branch you are on. If you fail this test, pause and ask the developer how you should proceed, and then select or create a branch as instructed before starting the first task.
@@ -17,9 +19,9 @@ Now orchestrate all Pending Tasks as outlined below. Use an **orchestration agen
    - Any outputs from prior tasks (e.g. "L010 complete; Profile schema updated in openapi.yaml")
 3. **Sub-agent** executes only that task: read context, implement, test, update task notes.
 4. **Orchestrator Confirmation**: The orchestrator should repeat drop/config testing as outlined in the task.
-4. **Commit Changes**: The orchestrator is responsible for a commit, with a meaningful message, and a push.
-5. **Mark Shipped** by updating the task status, and renaming the task file like `SHIPPED.T010_update_profile_data.md`.
-6. **Orchestrator** after the commit, moves to the next task.
+5. **Commit Changes**: The orchestrator is responsible for a commit, with a meaningful message, and a push.
+6. **Mark Shipped** by updating the task status, and renaming the task file like `SHIPPED.T010_update_profile_data.md`.
+7. **Orchestrator** after the commit, moves to the next task.
 
 **Task Failure Case**: In the event a task fails, execution should halt and the developer should receive a summary of the current state and error condition that caused the failure.
 
@@ -31,13 +33,6 @@ pipenv run container && pipenv run api && pipenv run e2e
 All E2E tests must pass 100%. If any test fails, pause and resolve the failure before proceeding.
 
 **All Tasks Complete**: Once all tasks and the mandatory Pre-PR QA Gate have successfully completed, the orchestration agent should create a Pull Request in **this API repository** with a meaningful summary of all the commits made during the workflow. Notify the developer that the workflow was completed and provide a link to the PR.
-
-## Shared Library / Version Bump Checklist
-
-When orchestrating a task that pins or upgrades a shared library (e.g. `api-utils`):
-1. **Audit Token & Claim Requirements**: Check `api_utils.flask_utils.token` for changes to required JWT claims (such as `profile_id`, `customer_id`, `mentor_id`) and immediately sync `test/e2e/e2e_auth.py` so black-box tests mint valid persona tokens.
-2. **Audit Method Signatures**: Verify helper signatures (`MongoIO`, `execute_list_query`, `encode_document`, exception classes) against active `api_utils` code to prevent positional/keyword argument mismatches.
-3. **Verify Full Stack**: Run `pipenv run container && pipenv run api && pipenv run e2e` to ensure live black-box compatibility with the upgraded library.
 
 ## Implementation Details
 - **Recommended filename pattern**:
