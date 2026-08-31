@@ -32,8 +32,8 @@ class TestPlanRoutes(unittest.TestCase):
 
     @patch("src.routes.plan_routes.create_flask_token")
     @patch("src.routes.plan_routes.create_flask_breadcrumb")
-    @patch("src.routes.plan_routes.PlanService.create_plan")
-    @patch("src.routes.plan_routes.PlanService.get_plan")
+    @patch("src.services.plan_service.PlanService.create_plan")
+    @patch("src.services.plan_service.PlanService.get_plan")
     def test_create_plan_success(
         self,
         mock_get_plan,
@@ -65,16 +65,16 @@ class TestPlanRoutes(unittest.TestCase):
             "123", self.mock_token, self.mock_breadcrumb
         )
 
-    @patch("src.routes.plan_routes.create_flask_token")
-    @patch("src.routes.plan_routes.create_flask_breadcrumb")
-    @patch("src.routes.plan_routes.PlanService.get_plans")
+    @patch("api_utils.routes.shared_get_routes.create_flask_token")
+    @patch("api_utils.routes.shared_get_routes.create_flask_breadcrumb")
+    @patch("src.services.plan_service.PlanService.get_plans")
     def test_get_plans_default_pagination(
         self,
         mock_get_plans,
         mock_create_breadcrumb,
         mock_create_token,
     ):
-        """GET /api/plan returns a plain array with pagination headers."""
+        """GET /api/plan returns a plain JSON array."""
         mock_create_token.return_value = self.mock_token
         mock_create_breadcrumb.return_value = self.mock_breadcrumb
 
@@ -89,21 +89,18 @@ class TestPlanRoutes(unittest.TestCase):
         data = response.json
         self.assertIsInstance(data, list)
         self.assertEqual(len(data), 2)
-        self.assertEqual(response.headers["X-Pagination-Offset"], "0")
-        self.assertEqual(response.headers["X-Pagination-Size"], "20")
-        self.assertEqual(response.headers["X-Pagination-Returned"], "2")
         mock_get_plans.assert_called_once_with(
             self.mock_token,
             self.mock_breadcrumb,
-            offset=0,
-            size=20,
-            filters={},
-            sort_by=[("name", 1), ("_id", 1)],
+            0,
+            20,
+            {},
+            [("name", 1), ("_id", 1)],
         )
 
-    @patch("src.routes.plan_routes.create_flask_token")
-    @patch("src.routes.plan_routes.create_flask_breadcrumb")
-    @patch("src.routes.plan_routes.PlanService.get_plans")
+    @patch("api_utils.routes.shared_get_routes.create_flask_token")
+    @patch("api_utils.routes.shared_get_routes.create_flask_breadcrumb")
+    @patch("src.services.plan_service.PlanService.get_plans")
     def test_get_plans_with_headers_and_name_filter(
         self,
         mock_get_plans,
@@ -125,15 +122,15 @@ class TestPlanRoutes(unittest.TestCase):
         mock_get_plans.assert_called_once_with(
             self.mock_token,
             self.mock_breadcrumb,
-            offset=2,
-            size=5,
-            filters={"name": "intro"},
-            sort_by=[("name", -1), ("_id", -1)],
+            2,
+            5,
+            {"name": "intro"},
+            [("name", -1), ("_id", -1)],
         )
 
-    @patch("src.routes.plan_routes.create_flask_token")
-    @patch("src.routes.plan_routes.create_flask_breadcrumb")
-    @patch("src.routes.plan_routes.PlanService.get_plan")
+    @patch("api_utils.routes.shared_get_routes.create_flask_token")
+    @patch("api_utils.routes.shared_get_routes.create_flask_breadcrumb")
+    @patch("src.services.plan_service.PlanService.get_plan")
     def test_get_plan_success(
         self,
         mock_get_plan,
@@ -158,9 +155,9 @@ class TestPlanRoutes(unittest.TestCase):
             "123", self.mock_token, self.mock_breadcrumb
         )
 
-    @patch("src.routes.plan_routes.create_flask_token")
-    @patch("src.routes.plan_routes.create_flask_breadcrumb")
-    @patch("src.routes.plan_routes.PlanService.get_plan")
+    @patch("api_utils.routes.shared_get_routes.create_flask_token")
+    @patch("api_utils.routes.shared_get_routes.create_flask_breadcrumb")
+    @patch("src.services.plan_service.PlanService.get_plan")
     def test_get_plan_not_found(
         self,
         mock_get_plan,

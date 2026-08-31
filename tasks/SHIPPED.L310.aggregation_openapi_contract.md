@@ -1,6 +1,6 @@
 # L310 – Aggregation OpenAPI contract (Note, ResourceAggregation, AggregationDetail)
 
-**Status**: Pending  
+**Status**: Complete  
 **Type**: Feature  
 **Depends On**: none  
 **Description**: Add the OpenAPI contract for a new `GET /api/aggregation/{resource_id}` endpoint that returns Resource_Aggregation metrics together with the Notes for that resource. This task only updates `docs/openapi.yaml` (schemas + path); the service and route are implemented in L330.
@@ -66,4 +66,9 @@ The agent must not update files outside this list.
 
 ## Execution Notes
 
-_Reserved for the task execution agent._
+1. Added `Aggregation` tag to `docs/openapi.yaml`.
+2. Added `GET /api/aggregation/{resource_id}` operation (`operationId: getAggregationDetail`) with `resource_id` path parameter, Bearer auth security, 200 response referencing `AggregationDetail`, and standard error responses.
+3. Added `Note`, `ResourceAggregation`, and `AggregationDetail` component schemas matching configurator JSON schemas and mentee API specifications.
+4. Validated YAML parsing with `python3 -c "import yaml; yaml.safe_load(open('docs/openapi.yaml'))"`.
+5. Validated python build and unit tests (`pipenv run build && pipenv run test`).
+

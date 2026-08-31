@@ -42,6 +42,8 @@ tags:
     description: Profile operations (read-only)
   - name: Mentee
     description: Mentee notes operations (read, update)
+  - name: Aggregation
+    description: Resource aggregation metrics (read; null when hidden or absent)
 paths:
   /api/config:
     get:
@@ -96,6 +98,45 @@ paths:
               schema:
                 type: string
 
+  /api/aggregation/{resource_id}:
+    get:
+      tags:
+        - Aggregation
+      summary: Get Resource aggregation by resource ID
+      description: |
+        Return the Resource_Aggregation document for a visible Resource, or
+        `null` when the Resource is missing/hidden by outbound RBAC or no
+        aggregation row exists. Does not create documents. Any authenticated
+        token holder may call; visibility follows the parent Resource outbound
+        filter (admin unrestricted; non-admin excludes archived).
+      operationId: getAggregation
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: resource_id
+          in: path
+          required: true
+          description: The Resource ID (MongoDB ObjectId)
+          schema:
+            type: string
+            pattern: '^[0-9a-fA-F]{24}$'
+            example: 507f1f77bcf86cd799439011
+      responses:
+        '200':
+          description: Aggregation document, or null when unavailable
+          content:
+            application/json:
+              schema:
+                nullable: true
+                allOf:
+                  - $ref: '#/components/schemas/ResourceAggregation'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   /api/resource:
     get:
       tags:
@@ -105,8 +146,7 @@ paths:
         Return a paginated array of Resource documents. Pagination uses the
         `offset`/`size` request headers; ordering uses the `sort_by`/`order`
         query params (default name asc); filters are query params. The response
-        body is a plain array; pagination metadata is returned via
-        `X-Pagination-*` response headers.
+        body is a plain JSON array.
       operationId: getResources
       security:
         - bearerAuth: []
@@ -138,13 +178,6 @@ paths:
       responses:
         '200':
           description: Successfully retrieved matching documents
-          headers:
-            X-Pagination-Offset:
-              $ref: '#/components/headers/X-Pagination-Offset'
-            X-Pagination-Size:
-              $ref: '#/components/headers/X-Pagination-Size'
-            X-Pagination-Returned:
-              $ref: '#/components/headers/X-Pagination-Returned'
           content:
             application/json:
               schema:
@@ -267,8 +300,7 @@ paths:
         Return a paginated array of Path documents. Pagination uses the
         `offset`/`size` request headers; ordering uses the `sort_by`/`order`
         query params (default name asc); `name` is an optional partial,
-        case-insensitive filter. The response body is a plain array; pagination
-        metadata is returned via `X-Pagination-*` response headers.
+        case-insensitive filter. The response body is a plain JSON array.
       operationId: getPaths
       security:
         - bearerAuth: []
@@ -287,13 +319,6 @@ paths:
       responses:
         '200':
           description: Successfully retrieved matching Path documents
-          headers:
-            X-Pagination-Offset:
-              $ref: '#/components/headers/X-Pagination-Offset'
-            X-Pagination-Size:
-              $ref: '#/components/headers/X-Pagination-Size'
-            X-Pagination-Returned:
-              $ref: '#/components/headers/X-Pagination-Returned'
           content:
             application/json:
               schema:
@@ -416,8 +441,7 @@ paths:
         Return a paginated array of Plan documents. Pagination uses the
         `offset`/`size` request headers; ordering uses the `sort_by`/`order`
         query params (default name asc); `name` is an optional partial,
-        case-insensitive filter. The response body is a plain array; pagination
-        metadata is returned via `X-Pagination-*` response headers.
+        case-insensitive filter. The response body is a plain JSON array.
       operationId: getPlans
       security:
         - bearerAuth: []
@@ -436,13 +460,6 @@ paths:
       responses:
         '200':
           description: Successfully retrieved matching Plan documents
-          headers:
-            X-Pagination-Offset:
-              $ref: '#/components/headers/X-Pagination-Offset'
-            X-Pagination-Size:
-              $ref: '#/components/headers/X-Pagination-Size'
-            X-Pagination-Returned:
-              $ref: '#/components/headers/X-Pagination-Returned'
           content:
             application/json:
               schema:
@@ -557,6 +574,44 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
   /api/encounter:
+    get:
+      tags:
+        - Encounter
+      summary: Get all Encounter documents for a mentee
+      description: |
+        Return a paginated array of Encounter documents for a specific mentee.
+        Pagination uses the `offset`/`size` request headers.
+      operationId: getEncounters
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OffsetHeader'
+        - $ref: '#/components/parameters/SizeHeader'
+        - name: mentee_id
+          in: query
+          required: true
+          description: Mentee profile ID to retrieve encounters for (MongoDB ObjectId)
+          schema:
+            type: string
+            pattern: '^[0-9a-fA-F]{24}$'
+            example: 507f1f77bcf86cd799439011
+      responses:
+        '200':
+          description: Successfully retrieved Encounter documents
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Encounter'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
     post:
       tags:
         - Encounter
@@ -683,8 +738,7 @@ paths:
         `offset`/`size` request headers; ordering uses the `sort_by`/`order`
         query params (default created.at_time desc). `type` is an optional
         comma-separated filter and `profile_id` scopes on context.profile_id.
-        The response body is a plain array; pagination metadata is returned via
-        `X-Pagination-*` response headers.
+        The response body is a plain JSON array.
       operationId: getEvents
       security:
         - bearerAuth: []
@@ -711,13 +765,6 @@ paths:
       responses:
         '200':
           description: Successfully retrieved Events
-          headers:
-            X-Pagination-Offset:
-              $ref: '#/components/headers/X-Pagination-Offset'
-            X-Pagination-Size:
-              $ref: '#/components/headers/X-Pagination-Size'
-            X-Pagination-Returned:
-              $ref: '#/components/headers/X-Pagination-Returned'
           content:
             application/json:
               schema:
@@ -1030,23 +1077,6 @@ components:
       schema:
         type: string
         enum: [asc, desc]
-
-  headers:
-    X-Pagination-Offset:
-      description: The offset applied to this list response.
-      schema:
-        type: integer
-        example: 0
-    X-Pagination-Size:
-      description: The page size applied to this list response.
-      schema:
-        type: integer
-        example: 20
-    X-Pagination-Returned:
-      description: The number of items returned in this response.
-      schema:
-        type: integer
-        example: 20
 
   responses:
     BadRequest:
@@ -2348,3 +2378,96 @@ components:
           type: string
           description: A brief summary of the transcript
           maxLength: 4096
+
+    Note:
+      type: object
+      description: A note about a resource
+      additionalProperties: false
+      properties:
+        _id:
+          type: string
+          description: The unique identifier for the Note
+          pattern: '^[0-9a-fA-F]{24}$'
+          example: 507f1f77bcf86cd799439011
+        resource_id:
+          type: string
+          description: The Resource ID this note is for
+          pattern: '^[0-9a-fA-F]{24}$'
+          example: 507f1f77bcf86cd799439011
+        profile_id:
+          type: string
+          description: The Profile ID of the person who took this note
+          pattern: '^[0-9a-fA-F]{24}$'
+          example: 507f1f77bcf86cd799439011
+        note:
+          type: string
+          description: The text of the note
+          maxLength: 4096
+          example: Found this resource very helpful for learning async patterns.
+        status:
+          type: string
+          description: Status of the document
+          enum:
+            - active
+            - archived
+          example: active
+        created:
+          $ref: '#/components/schemas/Breadcrumb'
+        saved:
+          $ref: '#/components/schemas/Breadcrumb'
+
+    ResourceAggregation:
+      type: object
+      description: Resource level rating and note count metrics
+      additionalProperties: false
+      required:
+        - _id
+        - resource_id
+        - rating_sum
+        - created
+        - last_saved
+      properties:
+        _id:
+          type: string
+          description: A unique identifier for Resource_Aggregation
+          pattern: '^[0-9a-fA-F]{24}$'
+          example: 507f1f77bcf86cd799439011
+        resource_id:
+          type: string
+          description: The Resource that is rated
+          pattern: '^[0-9a-fA-F]{24}$'
+          example: 507f1f77bcf86cd799439011
+        note_count:
+          type: integer
+          minimum: 0
+          description: The number of notes left on this resource
+          example: 3
+        completions:
+          type: integer
+          minimum: 0
+          description: The number of times this resource has been completed
+          example: 5
+        hits:
+          type: integer
+          minimum: 0
+          description: The number of times this URL has been clicked
+          example: 12
+        duration:
+          type: string
+          description: The total duration of all completions (ISO 8601 duration)
+          pattern: '^P(?!$)(\d+Y)?(\d+M)?(\d+W)?(\d+D)?(T(\d+H)?(\d+M)?(\d+(\.\d+)?S)?)?$'
+          example: PT2H30M
+        rating_count:
+          type: integer
+          minimum: 0
+          description: The number of ratings (should equal completions)
+          example: 5
+        rating_sum:
+          type: integer
+          minimum: 0
+          description: The sum of all ratings
+          example: 20
+        created:
+          $ref: '#/components/schemas/Breadcrumb'
+        last_saved:
+          $ref: '#/components/schemas/Breadcrumb'

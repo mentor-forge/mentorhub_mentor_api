@@ -120,11 +120,7 @@ def test_create_encounter_from_plan_endpoint():
 
 @pytest.mark.e2e
 def test_create_encounter_unknown_plan_returns_404():
-    """POST /api/encounter returns 404 when the referenced Plan does not exist.
-
-    The create path resolves the referenced Plan before persisting; a
-    well-formed but unknown ``plan_id`` surfaces as ``HTTPNotFound`` (404).
-    """
+    """POST /api/encounter returns 404 when the referenced Plan does not exist."""
     token = get_auth_token()
     headers = {"Authorization": f"Bearer {token}"}
     data = {
@@ -141,12 +137,7 @@ def test_create_encounter_unknown_plan_returns_404():
 
 @pytest.mark.e2e
 def test_create_encounter_with_seeded_profile_ids():
-    """POST /api/encounter succeeds with a real Plan and seeded Profile ids.
-
-    ``mentor_id`` and ``mentee_id`` use Profile documents loaded into the
-    database on startup (``marti`` and ``mary``); ``plan_id`` is created via
-    the Plan endpoint so every reference id is valid.
-    """
+    """POST /api/encounter succeeds with a real Plan and seeded Profile ids."""
     token = get_auth_token()
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -177,18 +168,35 @@ def test_create_encounter_with_seeded_profile_ids():
 
     body = response.json()
     assert "_id" in body, "Response missing '_id' key"
-    # ObjectId hex is case-insensitive; MongoDB returns canonical lowercase.
     assert body["mentor_id"].lower() == "a00000000000000000000006"
     assert body["mentee_id"].lower() == "a00000000000000000000004"
 
 
 @pytest.mark.e2e
-def test_get_encounter_list_endpoint_removed():
-    """GET /api/encounter (list) no longer exists; expect 404/405, never 200."""
+def test_get_encounter_list_requires_mentee_id():
+    """GET /api/encounter requires mentee_id query param; returns 400 when omitted."""
     token = get_auth_token()
     headers = {"Authorization": f"Bearer {token}"}
     response = requests.get(f"{BASE_URL}/api/encounter", headers=headers)
-    assert response.status_code in (404, 405), _err(response, "404 or 405")
+    assert response.status_code == 400, _err(response, 400)
+
+
+@pytest.mark.e2e
+def test_get_encounter_list_scoped_by_mentee_id():
+    """GET /api/encounter?mentee_id=... returns encounters for mentee."""
+    token = get_auth_token()
+    headers = {"Authorization": f"Bearer {token}"}
+
+    encounter = _create_encounter(headers)
+    mentee_id = encounter["mentee_id"]
+
+    response = requests.get(
+        f"{BASE_URL}/api/encounter?mentee_id={mentee_id}",
+        headers=headers,
+    )
+    assert response.status_code == 200, _err(response, 200)
+    data = response.json()
+    assert isinstance(data, list)
 
 
 @pytest.mark.e2e
@@ -220,7 +228,6 @@ def test_update_encounter_owner_or_admin_allowed():
 def test_update_encounter_non_owner_mentor_denied():
     """PATCH /api/encounter/<id> is denied (403) for a non-owning mentor."""
     admin_headers = {"Authorization": f"Bearer {get_auth_token()}"}
-    # Create an encounter owned by an arbitrary mentor id (not the caller below).
     encounter = _create_encounter(admin_headers, mentor_id="507f1f77bcf86cd7994390ff")
     encounter_id = encounter["_id"]
 

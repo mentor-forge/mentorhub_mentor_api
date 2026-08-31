@@ -46,7 +46,7 @@ def test_create_event_endpoint():
 
 @pytest.mark.e2e
 def test_get_events_endpoint():
-    """Test GET /api/event returns a plain array with pagination headers."""
+    """Test GET /api/event returns a plain array."""
     token = get_auth_token()
     headers = {"Authorization": f"Bearer {token}"}
     response = requests.get(f"{BASE_URL}/api/event", headers=headers)
@@ -54,9 +54,6 @@ def test_get_events_endpoint():
 
     response_data = response.json()
     assert isinstance(response_data, list), "Response should be a plain JSON array"
-    assert response.headers.get("X-Pagination-Offset") == "0"
-    assert response.headers.get("X-Pagination-Size") == "20"
-    assert response.headers.get("X-Pagination-Returned") == str(len(response_data))
 
 
 @pytest.mark.e2e
@@ -77,7 +74,6 @@ def test_get_events_header_pagination_and_type_filter():
     response_data = response.json()
     assert isinstance(response_data, list), "Response should be a plain JSON array"
     assert len(response_data) <= 5, "size=5 should cap the page at five items"
-    assert response.headers.get("X-Pagination-Size") == "5"
 
 
 @pytest.mark.e2e

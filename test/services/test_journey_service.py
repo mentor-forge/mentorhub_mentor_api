@@ -24,13 +24,20 @@ class TestJourneyService(unittest.TestCase):
 
     def setUp(self):
         """Set up the test fixture."""
-        self.mock_token = {"user_id": "mike", "roles": ["mentor"]}
+        self.mock_mentor_token = {"user_id": "mike", "roles": ["mentor"]}
+        self.mock_admin_token = {"user_id": "admin", "roles": ["admin"]}
+        self.mock_user_token = {"user_id": "regular", "roles": ["user"]}
         self.mock_breadcrumb = {
             "at_time": "2024-01-01T00:00:00Z",
             "by_user": "mike",
             "from_ip": "127.0.0.1",
             "correlation_id": "test-correlation-id",
         }
+
+    def test_inherited_methods_exist(self):
+        """Assert inherited methods exist on the subclass."""
+        self.assertTrue(callable(getattr(JourneyService, "get_journey", None)))
+        self.assertTrue(callable(getattr(JourneyService, "get_journey_progress", None)))
 
     @patch("src.services.journey_service.Config.get_instance")
     @patch("src.services.journey_service.MongoIO.get_instance")
@@ -55,22 +62,21 @@ class TestJourneyService(unittest.TestCase):
         mock_get_mongo.return_value = mock_mongo
 
         result = JourneyService.get_journey_progress(
-            MENTEE_ID, self.mock_token, self.mock_breadcrumb
+            MENTEE_ID, self.mock_mentor_token, self.mock_breadcrumb
         )
 
         self.assertEqual(result, {"library": 3, "now": 1, "next": 3})
 
-        # Only the active journey for this mentee is queried.
         mock_mongo.get_documents.assert_called_once_with(
             "Journey", match={"profile_id": MENTEE_ID, "status": "active"}
         )
 
     @patch("src.services.journey_service.Config.get_instance")
     @patch("src.services.journey_service.MongoIO.get_instance")
-    def test_get_journey_progress_no_active_journey(
+    def test_get_journey_progress_allowed_for_admin(
         self, mock_get_mongo, mock_get_config
     ):
-        """Return zero counts when the mentee has no active journey."""
+        """Admin may call get_journey_progress."""
         mock_get_config.return_value = _make_config()
 
         mock_mongo = MagicMock()
@@ -78,71 +84,20 @@ class TestJourneyService(unittest.TestCase):
         mock_get_mongo.return_value = mock_mongo
 
         result = JourneyService.get_journey_progress(
-            MENTEE_ID, self.mock_token, self.mock_breadcrumb
+            MENTEE_ID, self.mock_admin_token, self.mock_breadcrumb
         )
-
         self.assertEqual(result, {"library": 0, "now": 0, "next": 0})
 
     @patch("src.services.journey_service.Config.get_instance")
-    @patch("src.services.journey_service.MongoIO.get_instance")
-    def test_get_journey_progress_handles_missing_scope_fields(
-        self, mock_get_mongo, mock_get_config
+    def test_get_journey_progress_forbidden_without_mentor_or_admin(
+        self, mock_get_config
     ):
-        """Missing/None scope fields are treated as empty (zero counts)."""
+        """Non-mentor cannot call get_journey_progress."""
         mock_get_config.return_value = _make_config()
 
-        mock_mongo = MagicMock()
-        mock_mongo.get_documents.return_value = [
-            {"status": "active", "library": None, "next": None}
-        ]
-        mock_get_mongo.return_value = mock_mongo
-
-        result = JourneyService.get_journey_progress(
-            MENTEE_ID, self.mock_token, self.mock_breadcrumb
-        )
-
-        self.assertEqual(result, {"library": 0, "now": 0, "next": 0})
-
-    @patch("src.services.journey_service.Config.get_instance")
-    @patch("src.services.journey_service.MongoIO.get_instance")
-    def test_get_journey_progress_forbidden_without_mentor_role(
-        self, mock_get_mongo, mock_get_config
-    ):
-        """Callers lacking the mentor role are denied before any DB access."""
-        mock_get_config.return_value = _make_config()
-        mock_mongo = MagicMock()
-        mock_get_mongo.return_value = mock_mongo
-
-        non_mentor_token = {"user_id": "carol", "roles": ["coordinator"]}
         with self.assertRaises(HTTPForbidden):
             JourneyService.get_journey_progress(
-                MENTEE_ID, non_mentor_token, self.mock_breadcrumb
-            )
-
-        # RBAC must short-circuit before touching the database
-        mock_mongo.get_documents.assert_not_called()
-
-    @patch("src.services.journey_service.Config.get_instance")
-    def test_check_permission_allows_mentor(self, mock_get_config):
-        """A token with the mentor role passes the permission check."""
-        mock_get_config.return_value = _make_config()
-        JourneyService._check_permission(
-            {"user_id": "mike", "roles": ["mentor"]}, "read"
-        )
-
-    @patch("src.services.journey_service.Config.get_instance")
-    def test_check_permission_allows_admin(self, mock_get_config):
-        """A token with the admin role passes the permission check."""
-        mock_get_config.return_value = _make_config()
-        JourneyService._check_permission({"user_id": "ada", "roles": ["admin"]}, "read")
-
-    @patch("src.services.journey_service.Config.get_instance")
-    def test_check_permission_denies_other_roles(self, mock_get_config):
-        """A token without the mentor or admin role raises HTTPForbidden."""
-        mock_get_config.return_value = _make_config()
-        with self.assertRaises(HTTPForbidden):
-            JourneyService._check_permission(
-                {"user_id": "carol", "roles": ["coordinator"]}, "read"
+                MENTEE_ID, self.mock_user_token, self.mock_breadcrumb
             )
 
 

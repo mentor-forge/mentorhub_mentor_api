@@ -28,11 +28,9 @@ class TestEventRoutes(unittest.TestCase):
 
     @patch("src.routes.event_routes.create_flask_token")
     @patch("src.routes.event_routes.create_flask_breadcrumb")
-    @patch("src.routes.event_routes.EventService.create_event")
-    @patch("src.routes.event_routes.EventService.get_event")
+    @patch("src.services.event_service.EventService.create_event")
     def test_create_event_success(
         self,
-        mock_get_event,
         mock_create_event,
         mock_create_breadcrumb,
         mock_create_token,
@@ -41,8 +39,7 @@ class TestEventRoutes(unittest.TestCase):
         mock_create_token.return_value = self.mock_token
         mock_create_breadcrumb.return_value = self.mock_breadcrumb
 
-        mock_create_event.return_value = "123"
-        mock_get_event.return_value = {
+        mock_create_event.return_value = {
             "_id": "123",
             "type": "login",
             "context": {"profile_id": "000000000000000000000001"},
@@ -59,21 +56,25 @@ class TestEventRoutes(unittest.TestCase):
         self.assertEqual(response.status_code, 201)
         data = response.json
         self.assertEqual(data["_id"], "123")
-        mock_create_event.assert_called_once()
-        mock_get_event.assert_called_once_with(
-            "123", self.mock_token, self.mock_breadcrumb
+        mock_create_event.assert_called_once_with(
+            {
+                "type": "login",
+                "context": {"profile_id": "000000000000000000000001"},
+            },
+            self.mock_token,
+            self.mock_breadcrumb,
         )
 
-    @patch("src.routes.event_routes.create_flask_token")
-    @patch("src.routes.event_routes.create_flask_breadcrumb")
-    @patch("src.routes.event_routes.EventService.get_events")
+    @patch("api_utils.routes.shared_get_routes.create_flask_token")
+    @patch("api_utils.routes.shared_get_routes.create_flask_breadcrumb")
+    @patch("src.services.event_service.EventService.get_events")
     def test_get_events_default_pagination(
         self,
         mock_get_events,
         mock_create_breadcrumb,
         mock_create_token,
     ):
-        """GET /api/event returns a plain array with pagination headers."""
+        """GET /api/event returns a plain JSON array."""
         mock_create_token.return_value = self.mock_token
         mock_create_breadcrumb.return_value = self.mock_breadcrumb
 
@@ -88,22 +89,18 @@ class TestEventRoutes(unittest.TestCase):
         data = response.json
         self.assertIsInstance(data, list)
         self.assertEqual(len(data), 2)
-        self.assertEqual(response.headers["X-Pagination-Offset"], "0")
-        self.assertEqual(response.headers["X-Pagination-Size"], "20")
-        self.assertEqual(response.headers["X-Pagination-Returned"], "2")
         mock_get_events.assert_called_once_with(
             self.mock_token,
             self.mock_breadcrumb,
-            offset=0,
-            size=20,
-            filters={},
-            sort_by=[("created.at_time", -1), ("_id", -1)],
-            profile_id=None,
+            0,
+            20,
+            {},
+            [("created.at_time", -1), ("_id", -1)],
         )
 
-    @patch("src.routes.event_routes.create_flask_token")
-    @patch("src.routes.event_routes.create_flask_breadcrumb")
-    @patch("src.routes.event_routes.EventService.get_events")
+    @patch("api_utils.routes.shared_get_routes.create_flask_token")
+    @patch("api_utils.routes.shared_get_routes.create_flask_breadcrumb")
+    @patch("src.services.event_service.EventService.get_events")
     def test_get_events_with_filters_and_scope(
         self,
         mock_get_events,
@@ -127,16 +124,16 @@ class TestEventRoutes(unittest.TestCase):
         mock_get_events.assert_called_once_with(
             self.mock_token,
             self.mock_breadcrumb,
-            offset=0,
-            size=5,
-            filters={"type": ["login"]},
-            sort_by=[("type", 1), ("_id", 1)],
+            0,
+            5,
+            {"type": ["login"]},
+            [("type", 1), ("_id", 1)],
             profile_id="507f1f77bcf86cd799439099",
         )
 
     @patch("src.routes.event_routes.create_flask_token")
     @patch("src.routes.event_routes.create_flask_breadcrumb")
-    @patch("src.routes.event_routes.EventService.get_event")
+    @patch("src.services.event_service.EventService.get_event")
     def test_get_event_success(
         self,
         mock_get_event,
@@ -163,7 +160,7 @@ class TestEventRoutes(unittest.TestCase):
 
     @patch("src.routes.event_routes.create_flask_token")
     @patch("src.routes.event_routes.create_flask_breadcrumb")
-    @patch("src.routes.event_routes.EventService.get_event")
+    @patch("src.services.event_service.EventService.get_event")
     def test_get_event_not_found(
         self,
         mock_get_event,

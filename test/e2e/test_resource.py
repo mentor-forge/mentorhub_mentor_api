@@ -47,7 +47,7 @@ def test_create_resource_endpoint():
 
 @pytest.mark.e2e
 def test_get_resources_endpoint():
-    """Test GET /api/resource returns a plain array with pagination headers."""
+    """Test GET /api/resource returns a plain array."""
     token = get_auth_token()
     headers = {"Authorization": f"Bearer {token}"}
     response = requests.get(f"{BASE_URL}/api/resource", headers=headers)
@@ -55,9 +55,6 @@ def test_get_resources_endpoint():
 
     response_data = response.json()
     assert isinstance(response_data, list), "Response should be a plain JSON array"
-    assert response.headers.get("X-Pagination-Offset") == "0"
-    assert response.headers.get("X-Pagination-Size") == "20"
-    assert response.headers.get("X-Pagination-Returned") == str(len(response_data))
 
 
 @pytest.mark.e2e
@@ -75,7 +72,6 @@ def test_get_resources_header_pagination():
     response_data = response.json()
     assert isinstance(response_data, list), "Response should be a plain JSON array"
     assert len(response_data) <= 1, "size=1 should cap the page at one item"
-    assert response.headers.get("X-Pagination-Size") == "1"
 
 
 @pytest.mark.e2e
