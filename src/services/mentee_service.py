@@ -85,23 +85,35 @@ class MenteeService(SharedMenteeService):
 
     @classmethod
     def get_mentee(cls, profile_id, token, breadcrumb):
-        """Retrieve mentee document, creating if missing for mentor/admin."""
+        """
+        Retrieve mentee document, creating only when none exists.
+
+        Shared parent 404 covers both missing and hidden/archived/out-of-scope
+        rows. Create-if-missing must apply only when no document exists;
+        otherwise re-raise 404 so hidden ids are not leaked via a new row.
+        """
         try:
-            try:
-                return super().get_mentee(profile_id, token, breadcrumb)
-            except HTTPNotFound:
-                cls._check_permission(token, "create")
-                profile_object_id = cls._to_object_id(profile_id, "profile_id")
-                mongo = MongoIO.get_instance()
-                config = Config.get_instance()
-                collection_name = cls._collection_name(config)
-                document = cls._default_document(profile_object_id, breadcrumb)
-                mentee_id = mongo.create_document(collection_name, document)
-                created_doc = mongo.get_document(collection_name, mentee_id)
-                logger.info(
-                    f"Created default mentee for profile {profile_id} by {token.get('user_id')}"
-                )
-                return created_doc
+            cls._check_permission(token, "read")
+            profile_object_id = cls._to_object_id(profile_id, "profile_id")
+            mongo = MongoIO.get_instance()
+            config = Config.get_instance()
+            collection_name = cls._collection_name(config)
+
+            existing = mongo.get_documents(
+                collection_name, match={"profile_id": profile_object_id}
+            )
+            if existing:
+                # Existing row: shared visibility (404 if hidden). Never create.
+                return cls._require_mentee_visible(existing[0], token, profile_id)
+
+            cls._check_permission(token, "create")
+            document = cls._default_document(profile_object_id, breadcrumb)
+            mentee_id = mongo.create_document(collection_name, document)
+            created_doc = mongo.get_document(collection_name, mentee_id)
+            logger.info(
+                f"Created default mentee for profile {profile_id} by {token.get('user_id')}"
+            )
+            return created_doc
         except (HTTPBadRequest, HTTPForbidden, HTTPNotFound):
             raise
         except Exception as e:

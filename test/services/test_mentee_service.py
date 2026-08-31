@@ -36,9 +36,19 @@ class TestMenteeService(unittest.TestCase):
             "correlation_id": "test-correlation-id",
         }
 
+    @patch("api_utils.config.config.Config.get_instance")
     @patch("api_utils.services.mentee_service.Config.get_instance")
     @patch("api_utils.services.mentee_service.MongoIO.get_instance")
-    def test_get_mentee_existing(self, mock_get_mongo, mock_get_config):
+    @patch("src.services.mentee_service.Config.get_instance")
+    @patch("src.services.mentee_service.MongoIO.get_instance")
+    def test_get_mentee_existing(
+        self,
+        mock_get_mongo,
+        mock_get_config,
+        mock_parent_mongo,
+        mock_parent_config,
+        mock_rbac_config,
+    ):
         """get_mentee returns the existing document when one is found."""
         mock_config = MagicMock()
         mock_config.MENTEE_COLLECTION_NAME = "Mentee"
@@ -46,8 +56,14 @@ class TestMenteeService(unittest.TestCase):
         mock_config.ROLE_MENTOR = "mentor"
         mock_config.ROLE_ADMIN = "admin"
         mock_get_config.return_value = mock_config
+        mock_parent_config.return_value = mock_config
+        mock_rbac_config.return_value = mock_config
 
-        existing = {"_id": ObjectId(MENTEE_ID), "profile_id": ObjectId(PROFILE_ID)}
+        existing = {
+            "_id": ObjectId(MENTEE_ID),
+            "profile_id": ObjectId(PROFILE_ID),
+            "status": "active",
+        }
         mock_mongo = MagicMock()
         mock_mongo.get_documents.return_value = [existing]
         mock_mongo.get_document.return_value = {
@@ -55,6 +71,7 @@ class TestMenteeService(unittest.TestCase):
             "mentor_id": ObjectId(MENTOR_PROFILE_ID),
         }
         mock_get_mongo.return_value = mock_mongo
+        mock_parent_mongo.return_value = mock_mongo
 
         result = MenteeService.get_mentee(
             PROFILE_ID, self.mock_mentor_token, self.mock_breadcrumb
@@ -65,12 +82,8 @@ class TestMenteeService(unittest.TestCase):
 
     @patch("src.services.mentee_service.Config.get_instance")
     @patch("src.services.mentee_service.MongoIO.get_instance")
-    @patch("api_utils.services.mentee_service.Config.get_instance")
-    @patch("api_utils.services.mentee_service.MongoIO.get_instance")
     def test_get_mentee_creates_when_missing_for_mentor(
         self,
-        mock_parent_mongo,
-        mock_parent_config,
         mock_get_mongo,
         mock_get_config,
     ):
@@ -81,7 +94,6 @@ class TestMenteeService(unittest.TestCase):
         mock_config.ROLE_MENTOR = "mentor"
         mock_config.ROLE_ADMIN = "admin"
         mock_get_config.return_value = mock_config
-        mock_parent_config.return_value = mock_config
 
         created_doc = {
             "_id": ObjectId(MENTEE_ID),
@@ -93,7 +105,6 @@ class TestMenteeService(unittest.TestCase):
         mock_mongo.create_document.return_value = MENTEE_ID
         mock_mongo.get_document.return_value = created_doc
         mock_get_mongo.return_value = mock_mongo
-        mock_parent_mongo.return_value = mock_mongo
 
         result = MenteeService.get_mentee(
             PROFILE_ID, self.mock_mentor_token, self.mock_breadcrumb
@@ -111,12 +122,8 @@ class TestMenteeService(unittest.TestCase):
 
     @patch("src.services.mentee_service.Config.get_instance")
     @patch("src.services.mentee_service.MongoIO.get_instance")
-    @patch("api_utils.services.mentee_service.Config.get_instance")
-    @patch("api_utils.services.mentee_service.MongoIO.get_instance")
     def test_get_mentee_creates_when_missing_for_admin(
         self,
-        mock_parent_mongo,
-        mock_parent_config,
         mock_get_mongo,
         mock_get_config,
     ):
@@ -127,7 +134,6 @@ class TestMenteeService(unittest.TestCase):
         mock_config.ROLE_MENTOR = "mentor"
         mock_config.ROLE_ADMIN = "admin"
         mock_get_config.return_value = mock_config
-        mock_parent_config.return_value = mock_config
 
         created_doc = {
             "_id": ObjectId(MENTEE_ID),
@@ -139,7 +145,6 @@ class TestMenteeService(unittest.TestCase):
         mock_mongo.create_document.return_value = MENTEE_ID
         mock_mongo.get_document.return_value = created_doc
         mock_get_mongo.return_value = mock_mongo
-        mock_parent_mongo.return_value = mock_mongo
 
         result = MenteeService.get_mentee(
             PROFILE_ID, self.mock_admin_token, self.mock_breadcrumb
@@ -147,14 +152,53 @@ class TestMenteeService(unittest.TestCase):
 
         self.assertEqual(result, created_doc)
 
-    @patch("src.services.mentee_service.Config.get_instance")
-    @patch("src.services.mentee_service.MongoIO.get_instance")
+    @patch("api_utils.config.config.Config.get_instance")
     @patch("api_utils.services.mentee_service.Config.get_instance")
     @patch("api_utils.services.mentee_service.MongoIO.get_instance")
-    def test_get_mentee_missing_forbidden_for_non_mentor(
+    @patch("src.services.mentee_service.Config.get_instance")
+    @patch("src.services.mentee_service.MongoIO.get_instance")
+    def test_get_mentee_hidden_archived_does_not_create(
         self,
+        mock_get_mongo,
+        mock_get_config,
         mock_parent_mongo,
         mock_parent_config,
+        mock_rbac_config,
+    ):
+        """Archived/hidden mentee returns 404 and must not create a duplicate."""
+        mock_config = MagicMock()
+        mock_config.MENTEE_COLLECTION_NAME = "Mentee"
+        mock_config.PROFILE_COLLECTION_NAME = "Profile"
+        mock_config.ROLE_MENTOR = "mentor"
+        mock_config.ROLE_ADMIN = "admin"
+        mock_get_config.return_value = mock_config
+        mock_parent_config.return_value = mock_config
+        mock_rbac_config.return_value = mock_config
+
+        existing = {
+            "_id": ObjectId(MENTEE_ID),
+            "profile_id": ObjectId(PROFILE_ID),
+            "status": "archived",
+        }
+        mock_mongo = MagicMock()
+        mock_mongo.get_documents.return_value = [existing]
+        mock_mongo.get_document.return_value = {
+            "_id": ObjectId(PROFILE_ID),
+            "mentor_id": ObjectId(MENTOR_PROFILE_ID),
+        }
+        mock_get_mongo.return_value = mock_mongo
+        mock_parent_mongo.return_value = mock_mongo
+
+        with self.assertRaises(HTTPNotFound):
+            MenteeService.get_mentee(
+                PROFILE_ID, self.mock_mentor_token, self.mock_breadcrumb
+            )
+        mock_mongo.create_document.assert_not_called()
+
+    @patch("src.services.mentee_service.Config.get_instance")
+    @patch("src.services.mentee_service.MongoIO.get_instance")
+    def test_get_mentee_missing_forbidden_for_non_mentor(
+        self,
         mock_get_mongo,
         mock_get_config,
     ):
@@ -165,12 +209,10 @@ class TestMenteeService(unittest.TestCase):
         mock_config.ROLE_MENTOR = "mentor"
         mock_config.ROLE_ADMIN = "admin"
         mock_get_config.return_value = mock_config
-        mock_parent_config.return_value = mock_config
 
         mock_mongo = MagicMock()
         mock_mongo.get_documents.return_value = []
         mock_get_mongo.return_value = mock_mongo
-        mock_parent_mongo.return_value = mock_mongo
 
         with self.assertRaises(HTTPForbidden):
             MenteeService.get_mentee(

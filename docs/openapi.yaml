@@ -43,7 +43,7 @@ tags:
   - name: Mentee
     description: Mentee notes operations (read, update)
   - name: Aggregation
-    description: Resource aggregation metrics and related notes (read)
+    description: Resource aggregation metrics (read; null when hidden or absent)
 paths:
   /api/config:
     get:
@@ -102,12 +102,14 @@ paths:
     get:
       tags:
         - Aggregation
-      summary: Get Resource aggregation detail by resource ID
+      summary: Get Resource aggregation by resource ID
       description: |
-        Retrieve Resource_Aggregation metrics and related Notes for a resource.
-        When no aggregation document exists for the resource, one is created with zeroed counters.
-        Any authenticated token holder may read.
-      operationId: getAggregationDetail
+        Return the Resource_Aggregation document for a visible Resource, or
+        `null` when the Resource is missing/hidden by outbound RBAC or no
+        aggregation row exists. Does not create documents. Any authenticated
+        token holder may call; visibility follows the parent Resource outbound
+        filter (admin unrestricted; non-admin excludes archived).
+      operationId: getAggregation
       security:
         - bearerAuth: []
       parameters:
@@ -121,11 +123,13 @@ paths:
             example: 507f1f77bcf86cd799439011
       responses:
         '200':
-          description: Successfully retrieved aggregation detail
+          description: Aggregation document, or null when unavailable
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AggregationDetail'
+                nullable: true
+                allOf:
+                  - $ref: '#/components/schemas/ResourceAggregation'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -2467,19 +2471,3 @@ components:
           $ref: '#/components/schemas/Breadcrumb'
         last_saved:
           $ref: '#/components/schemas/Breadcrumb'
-
-    AggregationDetail:
-      type: object
-      description: Composite aggregation view (metrics + related notes)
-      additionalProperties: false
-      required:
-        - aggregation
-        - notes
-      properties:
-        aggregation:
-          $ref: '#/components/schemas/ResourceAggregation'
-        notes:
-          type: array
-          description: Notes related to this resource
-          items:
-            $ref: '#/components/schemas/Note'

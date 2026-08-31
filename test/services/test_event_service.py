@@ -11,15 +11,30 @@ from api_utils.flask_utils.exceptions import (
     HTTPInternalServerError,
 )
 
+PROFILE_ID = "A00000000000000000000002"
+OTHER_PROFILE_ID = "A00000000000000000000099"
+
 
 class TestEventService(unittest.TestCase):
     """Test cases for EventService."""
 
     def setUp(self):
         """Set up the test fixture."""
-        self.mock_admin_token = {"user_id": "admin_user", "roles": ["admin"]}
-        self.mock_mentor_token = {"user_id": "mentor_user", "roles": ["mentor"]}
-        self.mock_user_token = {"user_id": "regular_user", "roles": ["user"]}
+        self.mock_admin_token = {
+            "user_id": "admin_user",
+            "roles": ["admin"],
+            "profile_id": PROFILE_ID,
+        }
+        self.mock_mentor_token = {
+            "user_id": "mentor_user",
+            "roles": ["mentor"],
+            "profile_id": PROFILE_ID,
+        }
+        self.mock_user_token = {
+            "user_id": "regular_user",
+            "roles": ["user"],
+            "profile_id": PROFILE_ID,
+        }
         self.mock_breadcrumb = {
             "at_time": "2024-01-01T00:00:00Z",
             "by_user": "test_user",
@@ -123,34 +138,73 @@ class TestEventService(unittest.TestCase):
                 {"type": "login"}, self.mock_mentor_token, self.mock_breadcrumb
             )
 
+    @patch("api_utils.config.config.Config.get_instance")
     @patch("src.services.event_service.Config.get_instance")
     @patch("src.services.event_service.MongoIO.get_instance")
-    def test_get_event_success(self, mock_get_mongo, mock_get_config):
-        """Test successful retrieval of an event."""
+    def test_get_event_success(self, mock_get_mongo, mock_get_config, mock_rbac_config):
+        """Test successful retrieval when the event matches outbound scope."""
         mock_config = MagicMock()
         mock_config.EVENT_COLLECTION_NAME = "Event"
         mock_config.ROLE_ADMIN = "admin"
         mock_config.ROLE_MENTOR = "mentor"
         mock_get_config.return_value = mock_config
+        mock_rbac_config.return_value = mock_config
 
+        event_doc = {
+            "_id": ObjectId(self.valid_id),
+            "type": "login",
+            "context": {"profile_id": ObjectId(PROFILE_ID)},
+        }
         mock_mongo = MagicMock()
-        mock_mongo.get_document.return_value = {"_id": self.valid_id, "type": "login"}
+        mock_mongo.get_document.return_value = event_doc
         mock_get_mongo.return_value = mock_mongo
 
         event = EventService.get_event(
             self.valid_id, self.mock_mentor_token, self.mock_breadcrumb
         )
-        self.assertEqual(event["_id"], self.valid_id)
+        self.assertEqual(event["_id"], ObjectId(self.valid_id))
 
+    @patch("api_utils.config.config.Config.get_instance")
     @patch("src.services.event_service.Config.get_instance")
     @patch("src.services.event_service.MongoIO.get_instance")
-    def test_get_event_not_found(self, mock_get_mongo, mock_get_config):
+    def test_get_event_hidden_out_of_scope(
+        self, mock_get_mongo, mock_get_config, mock_rbac_config
+    ):
+        """Out-of-scope event by-id returns 404 (not 403) for non-admin."""
+        mock_config = MagicMock()
+        mock_config.EVENT_COLLECTION_NAME = "Event"
+        mock_config.ROLE_ADMIN = "admin"
+        mock_config.ROLE_MENTOR = "mentor"
+        mock_get_config.return_value = mock_config
+        mock_rbac_config.return_value = mock_config
+
+        event_doc = {
+            "_id": ObjectId(self.valid_id),
+            "type": "login",
+            "context": {"profile_id": ObjectId(OTHER_PROFILE_ID)},
+        }
+        mock_mongo = MagicMock()
+        mock_mongo.get_document.return_value = event_doc
+        mock_get_mongo.return_value = mock_mongo
+
+        with self.assertRaises(HTTPNotFound):
+            EventService.get_event(
+                self.valid_id, self.mock_mentor_token, self.mock_breadcrumb
+            )
+
+    @patch("api_utils.config.config.Config.get_instance")
+    @patch("src.services.event_service.Config.get_instance")
+    @patch("src.services.event_service.MongoIO.get_instance")
+    def test_get_event_not_found(
+        self, mock_get_mongo, mock_get_config, mock_rbac_config
+    ):
         """Test get_event raises HTTPNotFound when document doesn't exist."""
         mock_config = MagicMock()
         mock_config.EVENT_COLLECTION_NAME = "Event"
         mock_config.ROLE_ADMIN = "admin"
         mock_config.ROLE_MENTOR = "mentor"
         mock_get_config.return_value = mock_config
+        mock_rbac_config.return_value = mock_config
 
         mock_mongo = MagicMock()
         mock_mongo.get_document.return_value = None
