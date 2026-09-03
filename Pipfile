@@ -8,7 +8,7 @@ flask = "*"
 pymongo = "*"
 pyjwt = "*"
 # Must use codeartifact index: PyPI package "api-utils" is unrelated; wrong index breaks Config/auth.
-api-utils = {version = "==1.0.0", index = "codeartifact"}
+api-utils = {version = "==1.0.1", index = "codeartifact"}
 
 [dev-packages]
 pytest = "*"

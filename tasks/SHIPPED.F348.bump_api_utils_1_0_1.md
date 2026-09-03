@@ -1,6 +1,6 @@
 # F348 – Pin api-utils 1.0.1
 
-**Status**: Pending  
+**Status**: Shipped  
 **Type**: Feature  
 **Depends On**: none  
 **Description**: Implement the dependency half of [F-RA15 / issue #29](https://github.com/mentor-forge/mentorhub_mentor_api/issues/29): pin `api-utils` from `1.0.0` to `1.0.1` so Mentor API consumes the Token contract that exposes `display_name` instead of `name`. Application replacements land in F349.
@@ -80,4 +80,42 @@ The agent must not update files outside this list.
 
 ## Execution Notes
 
-_Reserved for the task execution agent._
+### Plan
+
+1. Pin-only: change `Pipfile` `api-utils` from `==1.0.0` to `==1.0.1` (`index = "codeartifact"`; keep the existing PyPI-unrelated comment). Do not edit `src/`, `test/`, `docs/`, or `README.md`.
+2. Refresh `Pipfile.lock` with `scripts/pipenv-lock.sh` (CodeArtifact token + `pipenv lock --pypi-mirror`). If 1.0.1 will not resolve, set Status to Blocked and stop — no sibling path install, no local Token shim.
+3. Install with `pipenv run install` (not bare `pipenv install`). Confirm `pipenv run pip show api-utils` reports 1.0.1.
+4. Inspect the **installed** package (`Token.to_dict`, `Token._map_claims`, `create_flask_token`) and confirm Flask-token `display_name` (JWT wire claim `name` may still map into that value).
+5. Run `pipenv run test`, `pipenv run lint`, `pipenv run build`. Token-field-only test failures are expected and not a Task Failure Case; document them and proceed. Halt if tests fail for a different reason.
+6. Defer `container` / `api` / `e2e` to F349. After pin/install/inspect succeed, mark Shipped.
+
+### Implementation
+
+- `Pipfile`: `api-utils = {version = "==1.0.1", index = "codeartifact"}` (PyPI-unrelated comment unchanged).
+- `Pipfile.lock`: regenerated via `scripts/pipenv-lock.sh`; `api-utils` `version` is `==1.0.1` with new hashes (`98b6d9ad…`, `ce68399b…`).
+- No `src/`, `test/`, `docs/`, or `README.md` edits (README pin text remains F349).
+
+### Version confirmation
+
+- `pipenv run pip show api-utils` → **1.0.1** (installed from CodeArtifact; replaced 1.0.0).
+- Import check: `from api_utils.flask_utils.token import Token, create_flask_token` — `create_flask_token` is callable; `Token.to_dict` exists.
+
+### Token contract audit (installed 1.0.1)
+
+- `Token.to_dict()` keys: `user_id`, **`display_name`**, `roles`, `profile_id`, `customer_id`, `mentor_id`, `remote_ip`. No Flask-token `"name"` display field.
+- `display_name` value: `self.claims.get("name") or self.claims.get("display_name") or ""` — JWT OIDC `name` still maps into `display_name`.
+- `Token._map_claims()` maps `sub` → `user_id`, normalizes `roles` to a list, requires `profile_id`, defaults `customer_id` / `mentor_id`. Does not add a Flask-token `name` key.
+- `create_flask_token()` returns `Token().to_dict()`.
+
+### Test results
+
+- `sh scripts/pipenv-lock.sh` — success (1.0.1 resolved from CodeArtifact).
+- `pipenv run install` — success (`Successfully installed api-utils-1.0.1`).
+- `pipenv run test` — **156 passed**, 43 deselected (e2e). No token-field `name` vs `display_name` failures; suite was already green against 1.0.1 without F349 rewrites.
+- `pipenv run lint` — pass (`50 files would be left unchanged`).
+- `pipenv run build` — pass (exit 0).
+- Packaging (`container` / `api` / `e2e`) deferred to F349 per task.
+
+### Blockers
+
+None. 1.0.1 resolved and installed. In-scope gates passed.
