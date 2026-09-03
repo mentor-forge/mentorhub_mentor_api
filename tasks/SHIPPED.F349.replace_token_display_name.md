@@ -1,6 +1,6 @@
 # F349 – Use token.display_name (api-utils 1.0.1)
 
-**Status**: Pending  
+**Status**: Shipped  
 **Type**: Feature  
 **Depends On**: `F348_bump_api_utils_1_0_1`  
 **Description**: After the 1.0.1 pin, replace any Flask-token `name` with `display_name` as required by [F-RA15 / issue #29](https://github.com/mentor-forge/mentorhub_mentor_api/issues/29). Leave Profile, Path, Resource, Plan, Encounter, and Event **document** `name` fields unchanged. Align JWT minting, mock token dicts, and README with the installed 1.0.1 Token contract.
@@ -111,4 +111,46 @@ The agent must not update files outside this list. Skip files in the list that h
 
 ## Execution Notes
 
-_Reserved for the task execution agent._
+### Plan
+
+1. Confirm installed 1.0.1 Token contract (`to_dict` / `_map_claims`): Flask-token key is `display_name` from JWT `name` then JWT `display_name` then `""`; application-dict `name` omitted; `profile_id` required. JWT minting keeps OIDC `name`.
+2. Audit `src/routes/` and `src/services/`: no Flask-token `.name` / `["name"]` / `.get("name")`. `ProfileService` `match={"name": token.get("user_id")}` is a Profile **document** lookup — leave unchanged.
+3. Audit mocks: route/service tokens are `{user_id, roles}` (sometimes `profile_id`); none carry a misleading Flask-token `"name"`. No service reads `display_name`, so do not churn fixtures. Event e2e does not inspect persisted context `name`.
+4. Keep `e2e_auth.py` / local mint helpers minting JWT `name` (1.0.1 `_map_claims` still maps that claim). No JWT `display_name` claim required.
+5. Leave `docs/openapi.yaml` unchanged (`token` is an untyped object; no Flask-token `name` property).
+6. Update `README.md` only: pin `api-utils==1.0.1` and document Flask-token dict key `display_name` (list GET / `offset`/`size` / MongoIO already documented).
+7. Confirmation greps, then `pipenv run test` / `lint` / `build`, then packaging (`container` / `api` / `pip show` / authenticated `GET /api/config` / `e2e`).
+8. Do not change `Pipfile` version. Do not commit or push.
+
+### Implementation
+
+- Installed 1.0.1 confirmed: `Token.to_dict()` keys `user_id`, `display_name`, `roles`, `profile_id`, `customer_id`, `mentor_id`, `remote_ip`. `display_name` = JWT `name` or JWT `display_name` or `""`. `_map_claims` requires `profile_id`; does not add Flask-token `name`.
+- `src/routes/*.py` / `src/services/*.py`: no Flask-token display-field reads. `ProfileService` `match={"name": token.get("user_id")}` left unchanged (document lookup).
+- `test/routes/*.py` / `test/services/*.py`: mock tokens are `{user_id, roles}` (plus `profile_id` where needed). No token `"name"` key; no `display_name` consumer — skipped fixture churn.
+- `test/e2e/e2e_auth.py`, `test_path.py`, `test_encounter.py`: JWT claim `name` kept (OIDC). No JWT `display_name` added.
+- `test/e2e/test_event.py`: Event context assertions do not inspect token `name` — unchanged.
+- `docs/openapi.yaml`: `/api/config` `token` is untyped object — unchanged.
+- `README.md`: pin text `api-utils==1.0.1`; Flask-token key `display_name`; MongoIO note; JWT `name` → Flask-token `display_name`.
+- `Pipfile` version not changed.
+
+### Confirmation greps
+
+- `rg 'token\.name' src test` — **zero** hits
+- `rg 'token\[.name.\]|token\.get\(.name.\)' src test` — **zero** hits
+- `rg 'api-utils==1\.0\.0' README.md Pipfile` — **zero** hits
+
+### Test results
+
+- `pipenv run test` — **156 passed**, 43 deselected
+- `pipenv run lint` — pass (`50 files would be left unchanged`)
+- `pipenv run build` — pass (exit 0)
+- `pipenv run container` — success; image installed `api-utils==1.0.1`
+- `pipenv run api` — mentor-api stack started
+- `docker exec mentorhub-mentor_api-1 pip show api-utils` — **1.0.1**
+- Authenticated `GET /api/config` — HTTP 200; token keys `customer_id`, `display_name` (`"Adam Admin"`), `mentor_id`, `profile_id`, `remote_ip`, `roles`, `user_id`; Flask-token `name` **absent**
+- `/docs/openapi.yaml` smoke — HTTP 200
+- `pipenv run e2e` — **41 passed**, 2 skipped (profile composite / properties; existing seed skips)
+
+### Blockers
+
+None.
