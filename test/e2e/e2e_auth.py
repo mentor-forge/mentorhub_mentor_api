@@ -23,10 +23,9 @@ _DEFAULT_JWT_ISSUER = "dev-idp"
 _DEFAULT_JWT_AUDIENCE = "dev-api"
 _DEFAULT_JWT_ALGORITHM = "HS256"
 
-# The default persona keeps ``sub="adam"`` (the Profile dashboard resolves the
-# mentor by ``Profile.name == token.sub``; no seeded Profile is named "adam", so
-# the dashboard stays empty and those tests keep skipping exactly as before). It
-# retains both ``admin`` and ``mentor`` so role-gated reads and the owner-or-admin
+# The default persona keeps ``sub="adam"`` and resolves its Profile by the
+# required ``profile_id`` claim. It retains both ``admin`` and ``mentor`` so
+# role-gated reads and the owner-or-admin
 # PATCH bypass in the Encounter/Path tests keep passing. ``profile_id`` is a real
 # seeded Profile id (Sam Admin) to satisfy the now-required claim.
 _E2E_SUBJECT = "adam"

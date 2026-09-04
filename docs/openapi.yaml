@@ -1864,27 +1864,25 @@ components:
               example: 507f1f77bcf86cd799439011
     Profile:
       type: object
-      description: User Preferences associated with one **Identity**.
+      description: Authoritative person record for display identity, roles, and customer sponsorship on Profile.
       additionalProperties: false
       required:
         - _id
-        - name
       properties:
         _id:
           type: string
           description: The unique identifier for the Profile.
           pattern: '^[0-9a-fA-F]{24}$'
           example: 507f1f77bcf86cd799439011
-        name:
-          type: string
-          description: The IDP Username used in JWT Claims
-          pattern: '^[^\s]{1,40}$'
-          example: my-Profile
-        full_name:
+        display_name:
           type: string
           description: Display name from intake (distinct from IdP username)
           pattern: '^[^\t\n]{0,255}$'
           example: Jane Doe
+        cognito_sub:
+          type: string
+          description: Cognito user sub (immutable); Path A idempotency key
+          pattern: '^[^\s]{1,40}$'
         description:
           type: string
           description: A Comment the user adds to their profile
@@ -1909,6 +1907,7 @@ components:
           enum:
             - active
             - archived
+            - provisioned
             - suspended
           example: active
         interests:

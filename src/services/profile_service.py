@@ -57,29 +57,30 @@ class ProfileService(SharedProfileService):
         from src.services.journey_service import JourneyService
         from src.services.encounter_service import EncounterService
 
-        mentor_name = token.get("user_id")
-        mentors = mongo.get_documents(
-            config.PROFILE_COLLECTION_NAME,
-            match={"name": mentor_name},
+        mentor_profile_id = token.get("profile_id")
+        mentor = (
+            mongo.get_document(config.PROFILE_COLLECTION_NAME, str(mentor_profile_id))
+            if mentor_profile_id
+            else None
         )
-        if not mentors:
+        if not mentor:
             logger.info(
-                f"No profile found for mentor '{mentor_name}'; "
+                f"No profile found for mentor profile '{mentor_profile_id}'; "
                 "returning empty dashboard"
             )
             return []
-        mentor_id = mentors[0]["_id"]
+        mentor_id = mentor["_id"]
 
         mentees = mongo.get_documents(
             config.PROFILE_COLLECTION_NAME,
             match={"mentor_id": mentor_id},
-            sort_by=[("name", ASCENDING)],
+            sort_by=[("display_name", ASCENDING)],
         )
 
         dashboard = [
             {
                 "_id": mentee["_id"],
-                "name": mentee.get("name"),
+                "name": mentee.get("display_name"),
                 "description": mentee.get("description"),
                 "progress": JourneyService.get_journey_progress(
                     mentee["_id"], token, breadcrumb
@@ -93,7 +94,7 @@ class ProfileService(SharedProfileService):
 
         logger.info(
             f"Built mentor dashboard with {len(dashboard)} mentees "
-            f"for user {mentor_name}"
+            f"for profile {mentor_profile_id}"
         )
         return dashboard
 

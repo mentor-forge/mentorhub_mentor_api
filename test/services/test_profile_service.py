@@ -36,7 +36,11 @@ class TestProfileService(unittest.TestCase):
 
     def setUp(self):
         """Set up the test fixture."""
-        self.mock_token = {"user_id": "mike", "roles": ["mentor"]}
+        self.mock_token = {
+            "user_id": "mike",
+            "profile_id": str(MENTOR_ID),
+            "roles": ["mentor"],
+        }
         self.mock_breadcrumb = {
             "at_time": "2024-01-01T00:00:00Z",
             "by_user": "mike",
@@ -59,16 +63,26 @@ class TestProfileService(unittest.TestCase):
         mock_get_config.return_value = _make_config()
 
         def fake_get_documents(collection_name, match=None, project=None, sort_by=None):
-            if collection_name == "Profile" and match == {"name": "mike"}:
-                return [{"_id": MENTOR_ID, "name": "mike"}]
             if collection_name == "Profile" and match == {"mentor_id": MENTOR_ID}:
                 return [
-                    {"_id": MENTEE_1_ID, "name": "daniel", "description": "mentee one"},
-                    {"_id": MENTEE_2_ID, "name": "lucky", "description": "mentee two"},
+                    {
+                        "_id": MENTEE_1_ID,
+                        "display_name": "Daniel Dissler",
+                        "description": "mentee one",
+                    },
+                    {
+                        "_id": MENTEE_2_ID,
+                        "display_name": "Lucky Minyard",
+                        "description": "mentee two",
+                    },
                 ]
             return []
 
         mock_mongo = MagicMock()
+        mock_mongo.get_document.return_value = {
+            "_id": MENTOR_ID,
+            "display_name": "Mike Storey",
+        }
         mock_mongo.get_documents.side_effect = fake_get_documents
         mock_get_mongo.return_value = mock_mongo
 
@@ -107,14 +121,14 @@ class TestProfileService(unittest.TestCase):
             },
         )
         self.assertEqual(first["_id"], MENTEE_1_ID)
-        self.assertEqual(first["name"], "daniel")
+        self.assertEqual(first["name"], "Daniel Dissler")
         self.assertEqual(first["description"], "mentee one")
         self.assertEqual(first["progress"], {"library": 3, "now": 1, "next": 3})
         self.assertEqual(first["last_encounter"]["_id"], ENCOUNTER_ID)
         self.assertEqual(first["last_encounter"]["summary"], "covered async patterns")
 
         second = result[1]
-        self.assertEqual(second["name"], "lucky")
+        self.assertEqual(second["name"], "Lucky Minyard")
         self.assertEqual(second["progress"], {"library": 0, "now": 0, "next": 0})
         self.assertIsNone(second["last_encounter"])
 
@@ -161,16 +175,14 @@ class TestProfileService(unittest.TestCase):
         mock_get_config.return_value = _make_config()
 
         mock_mongo = MagicMock()
-        mock_mongo.get_documents.return_value = []
+        mock_mongo.get_document.return_value = None
         mock_get_mongo.return_value = mock_mongo
 
         result = ProfileService.get_profiles(self.mock_token, self.mock_breadcrumb)
 
         self.assertEqual(result, [])
-        # Only the mentor lookup should have run
-        mock_mongo.get_documents.assert_called_once_with(
-            "Profile", match={"name": "mike"}
-        )
+        mock_mongo.get_document.assert_called_once_with("Profile", str(MENTOR_ID))
+        mock_mongo.get_documents.assert_not_called()
 
     @patch("src.services.encounter_service.EncounterService.get_recent_encounter")
     @patch("src.services.journey_service.JourneyService.get_journey_progress")
@@ -186,13 +198,12 @@ class TestProfileService(unittest.TestCase):
         """Return an empty list when the mentor has no assigned mentees."""
         mock_get_config.return_value = _make_config()
 
-        def fake_get_documents(collection_name, match=None, project=None, sort_by=None):
-            if match == {"name": "mike"}:
-                return [{"_id": MENTOR_ID, "name": "mike"}]
-            return []
-
         mock_mongo = MagicMock()
-        mock_mongo.get_documents.side_effect = fake_get_documents
+        mock_mongo.get_document.return_value = {
+            "_id": MENTOR_ID,
+            "display_name": "Mike Storey",
+        }
+        mock_mongo.get_documents.return_value = []
         mock_get_mongo.return_value = mock_mongo
 
         result = ProfileService.get_profiles(self.mock_token, self.mock_breadcrumb)
@@ -211,7 +222,7 @@ class TestProfileService(unittest.TestCase):
         mock_get_config.return_value = _make_config()
 
         mock_mongo = MagicMock()
-        mock_mongo.get_documents.side_effect = RuntimeError("Database error")
+        mock_mongo.get_document.side_effect = RuntimeError("Database error")
         mock_get_mongo.return_value = mock_mongo
 
         # The service no longer rewraps into HTTPInternalServerError; the raw
