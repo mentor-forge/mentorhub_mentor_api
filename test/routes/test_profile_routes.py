@@ -69,7 +69,7 @@ class TestProfileRoutes(unittest.TestCase):
             0,
             20,
             {},
-            [("name", 1), ("_id", 1)],
+            [("display_name", 1), ("_id", 1)],
         )
 
     @patch("api_utils.routes.shared_get_routes.create_flask_token")
@@ -87,7 +87,7 @@ class TestProfileRoutes(unittest.TestCase):
 
         mock_get_profiles.return_value = []
 
-        response = self.client.get("/api/profile?name=test")
+        response = self.client.get("/api/profile?display_name=test")
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json, [])
@@ -96,8 +96,8 @@ class TestProfileRoutes(unittest.TestCase):
             self.mock_breadcrumb,
             0,
             20,
-            {"name": "test"},
-            [("name", 1), ("_id", 1)],
+            {"display_name": "test"},
+            [("display_name", 1), ("_id", 1)],
         )
 
     @patch("api_utils.routes.shared_get_routes.create_flask_token")
