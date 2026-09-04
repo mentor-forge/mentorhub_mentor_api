@@ -3,7 +3,7 @@
 ## Prerequisites
 - Mentor Hub [Developers Edition](https://github.com/mentor-forge/mentorhub/blob/main/CONTRIBUTING.md)
 - Developer [API Standard Prerequisites](https://github.com/mentor-forge/mentorhub/blob/main/DeveloperEdition/standards/api_standards.md)
-- Dependency: `api-utils==1.0.1` (pinned in `Pipfile` via CodeArtifact)
+- Dependency: `api-utils==1.0.2` (pinned in `Pipfile` via CodeArtifact)
 - Flask token dict key is `display_name` (JWT wire claim remains OIDC `name`). `create_flask_token()` / `GET /api/config` `token` expose `display_name` and omit application-dict `name`.
 
 ## Ownership
@@ -83,7 +83,7 @@ pipenv run lint
 
 see the [Open API Specifications](./docs/openapi.yaml) for details on the API
 
-For E2E, mint a Bearer token via `test/e2e/e2e_auth.py` (`get_auth_token()` / `mint_token(...)`) with `pipenv run dev` (matching `JWT_SECRET`). Personas mint the OIDC JWT `name` claim; api-utils 1.0.1 maps that into Flask-token `display_name`. Prefer least-privilege personas for outbound RBAC cases; the default token is admin+mentor for privileged write paths.
+For E2E, mint a Bearer token via `test/e2e/e2e_auth.py` (`get_auth_token()` / `mint_token(...)`) with `pipenv run dev` (matching `JWT_SECRET`). Personas mint the OIDC JWT `name` claim; api-utils 1.0.2 maps that into Flask-token `display_name`. Prefer least-privilege personas for outbound RBAC cases; the default token is admin+mentor for privileged write paths.
 
 ### Simple Curl Commands:
 ```bash
