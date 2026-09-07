@@ -8,7 +8,9 @@ Provides get_journey_progress for Mentor Dashboard.
 import logging
 from api_utils import MongoIO, Config
 from api_utils.flask_utils.exceptions import HTTPForbidden
+from api_utils.mongo_utils import encode_document
 from api_utils.services import JourneyService as SharedJourneyService
+from api_utils.services.journey_service import JOURNEY_ID_PROPERTIES
 
 logger = logging.getLogger(__name__)
 
@@ -38,9 +40,11 @@ class JourneyService(SharedJourneyService):
         mongo = MongoIO.get_instance()
         config = Config.get_instance()
 
+        match = {"profile_id": profile_id, "status": "active"}
+        encode_document(match, JOURNEY_ID_PROPERTIES, [])
         journeys = mongo.get_documents(
             config.JOURNEY_COLLECTION_NAME,
-            match={"profile_id": profile_id, "status": "active"},
+            match=match,
         )
         if not journeys:
             return {"library": 0, "now": 0, "next": 0}
