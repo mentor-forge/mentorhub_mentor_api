@@ -100,6 +100,25 @@ class TestJourneyService(unittest.TestCase):
                 MENTEE_ID, self.mock_user_token, self.mock_breadcrumb
             )
 
+    @patch("src.services.journey_service.Config.get_instance")
+    @patch("src.services.journey_service.MongoIO.get_instance")
+    def test_get_journey_progress_encodes_string_profile_id(
+        self, mock_get_mongo, mock_get_config
+    ):
+        """String profile_id must be encoded to BSON ObjectId for Journey match."""
+        mock_get_config.return_value = _make_config()
+        mock_mongo = MagicMock()
+        mock_mongo.get_documents.return_value = []
+        mock_get_mongo.return_value = mock_mongo
+
+        JourneyService.get_journey_progress(
+            str(MENTEE_ID), self.mock_mentor_token, self.mock_breadcrumb
+        )
+
+        mock_mongo.get_documents.assert_called_once_with(
+            "Journey", match={"profile_id": MENTEE_ID, "status": "active"}
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

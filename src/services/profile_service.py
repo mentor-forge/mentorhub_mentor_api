@@ -8,7 +8,9 @@ Builds Mentor Dashboard and composite ProfileDetail / Properties hub for Mentor 
 import logging
 from api_utils import MongoIO, Config
 from api_utils.flask_utils.exceptions import HTTPForbidden, HTTPNotFound
+from api_utils.mongo_utils import encode_document
 from api_utils.services import ProfileService as SharedProfileService
+from api_utils.services.journey_service import JOURNEY_ID_PROPERTIES
 from pymongo import ASCENDING
 
 logger = logging.getLogger(__name__)
@@ -212,9 +214,11 @@ class ProfileService(SharedProfileService):
         from src.services.journey_service import JourneyService
         from src.services.encounter_service import EncounterService
 
+        match = {"profile_id": profile_id, "status": "active"}
+        encode_document(match, JOURNEY_ID_PROPERTIES, [])
         journeys = mongo.get_documents(
             config.JOURNEY_COLLECTION_NAME,
-            match={"profile_id": profile_id, "status": "active"},
+            match=match,
         )
         journey = journeys[0] if journeys else None
         progress = JourneyService.get_journey_progress(profile_id, token, breadcrumb)
