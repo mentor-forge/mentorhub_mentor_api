@@ -48,7 +48,6 @@ class TestMenteeRoutes(unittest.TestCase):
 
         mock_get_mentee.return_value = {
             "_id": MENTEE_ID,
-            "profile_id": PROFILE_ID,
             "status": "active",
         }
 
