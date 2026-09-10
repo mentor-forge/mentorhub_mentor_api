@@ -68,7 +68,7 @@ class TestJourneyService(unittest.TestCase):
         self.assertEqual(result, {"library": 3, "now": 1, "next": 3})
 
         mock_mongo.get_documents.assert_called_once_with(
-            "Journey", match={"profile_id": MENTEE_ID, "status": "active"}
+            "Journey", match={"_id": MENTEE_ID, "status": "active"}
         )
 
     @patch("src.services.journey_service.Config.get_instance")
@@ -116,7 +116,7 @@ class TestJourneyService(unittest.TestCase):
         )
 
         mock_mongo.get_documents.assert_called_once_with(
-            "Journey", match={"profile_id": MENTEE_ID, "status": "active"}
+            "Journey", match={"_id": MENTEE_ID, "status": "active"}
         )
 
 

@@ -40,7 +40,7 @@ class JourneyService(SharedJourneyService):
         mongo = MongoIO.get_instance()
         config = Config.get_instance()
 
-        match = {"profile_id": profile_id, "status": "active"}
+        match = {"_id": profile_id, "status": "active"}
         encode_document(match, JOURNEY_ID_PROPERTIES, [])
         journeys = mongo.get_documents(
             config.JOURNEY_COLLECTION_NAME,
