@@ -287,14 +287,16 @@ class EncounterService(SharedEncounterService):
                     "plan_id": data["plan_id"],
                     "status": "scheduled",
                     "appointment": {
-                        "from": from_dt.strftime("%Y-%m-%dT%H:%M:%SZ"),
-                        "to": to_dt.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                        "from": from_dt,
+                        "to": to_dt,
                     },
                     "agenda": [dict(item) for item in agenda],
                     "created": breadcrumb,
                     "saved": breadcrumb,
                 }
-                encode_document(doc, ["mentor_id", "mentee_id", "plan_id"], [])
+                encode_document(
+                    doc, ["mentor_id", "mentee_id", "plan_id"], ["from", "to"]
+                )
                 encounter_id = mongo.create_document(
                     config.ENCOUNTER_COLLECTION_NAME, doc
                 )

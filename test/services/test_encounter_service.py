@@ -3,6 +3,7 @@ Unit tests for Encounter service.
 """
 
 import unittest
+from datetime import datetime, timezone
 from unittest.mock import patch, MagicMock
 from bson import ObjectId
 from src.services.encounter_service import EncounterService
@@ -586,8 +587,14 @@ class TestEncounterService(unittest.TestCase):
         self.assertEqual(mock_mongo.create_document.call_count, 3)
 
         # Check first encounter (adjusted to Monday Feb 5)
-        self.assertEqual(encounters[0]["appointment"]["from"], "2024-02-05T14:00:00Z")
-        self.assertEqual(encounters[0]["appointment"]["to"], "2024-02-05T15:00:00Z")
+        self.assertEqual(
+            encounters[0]["appointment"]["from"],
+            datetime(2024, 2, 5, 14, 0, tzinfo=timezone.utc),
+        )
+        self.assertEqual(
+            encounters[0]["appointment"]["to"],
+            datetime(2024, 2, 5, 15, 0, tzinfo=timezone.utc),
+        )
         self.assertEqual(encounters[0]["status"], "scheduled")
         self.assertEqual(len(encounters[0]["agenda"]), 2)
         self.assertEqual(encounters[0]["agenda"][0]["step"], "Step 1")
@@ -596,9 +603,15 @@ class TestEncounterService(unittest.TestCase):
         self.assertEqual(encounters[0]["mentee_name"], "Bob Mentee")
 
         # Check second encounter (Feb 12)
-        self.assertEqual(encounters[1]["appointment"]["from"], "2024-02-12T14:00:00Z")
+        self.assertEqual(
+            encounters[1]["appointment"]["from"],
+            datetime(2024, 2, 12, 14, 0, tzinfo=timezone.utc),
+        )
         # Check third encounter (Feb 19)
-        self.assertEqual(encounters[2]["appointment"]["from"], "2024-02-19T14:00:00Z")
+        self.assertEqual(
+            encounters[2]["appointment"]["from"],
+            datetime(2024, 2, 19, 14, 0, tzinfo=timezone.utc),
+        )
 
     @patch("src.services.encounter_service.PlanService.get_plan")
     @patch("src.services.encounter_service.Config.get_instance")
@@ -674,8 +687,14 @@ class TestEncounterService(unittest.TestCase):
         )
         self.assertEqual(len(encounters), 2)
         # Default start date is Feb 01 (since day_of_week defaulted to Thursday)
-        self.assertEqual(created[0]["appointment"]["from"], "2024-02-01T09:00:00Z")
-        self.assertEqual(created[1]["appointment"]["from"], "2024-02-08T09:00:00Z")
+        self.assertEqual(
+            created[0]["appointment"]["from"],
+            datetime(2024, 2, 1, 9, 0, tzinfo=timezone.utc),
+        )
+        self.assertEqual(
+            created[1]["appointment"]["from"],
+            datetime(2024, 2, 8, 9, 0, tzinfo=timezone.utc),
+        )
 
     @patch("src.services.profile_service.ProfileService.get_profile_by_token")
     @patch("src.services.encounter_service.Config.get_instance")
