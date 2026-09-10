@@ -1,6 +1,6 @@
 # F358 – Update Mentee route tests and E2E integration tests for simplified schema
 
-**Status:** Pending  
+**Status:** Shipped  
 **Type:** Feature  
 **Depends On:** `F357_mentee_service_schema_alignment`  
 **Description:** Update Mentee route unit tests in `test/routes/test_mentee_routes.py` and E2E integration tests in `test/e2e/test_mentee.py` to use `summary` and `notes` instead of `focus`. Verify that `GET /api/mentee/<id>` auto-creates valid documents under the new schema, `PATCH` round-trips `summary` and `notes`, and all Pre-PR QA Gate tests pass.
@@ -76,4 +76,15 @@ Run all commands from this API repository root:
 The agent must not update files outside this list.
 
 ## Execution Notes
+
+- Updated `test/routes/test_mentee_routes.py` to test updating `summary` and `notes` instead of `focus`.
+- Updated `test/e2e/test_mentee.py`:
+  - Validated auto-creation initializes `summary: ""` and `notes: ""` without legacy fields (`focus`, `homework`, `description`).
+  - Validated `PATCH` round-trip persists `summary` and `notes` and excludes legacy fields.
+  - Added `test_patch_mentee_disallowed_fields_rejected_e2e` verifying `403 Forbidden` when attempting to patch legacy/restricted fields (`focus`, `homework`, `description`, `schedule`, `next_appointment`, `_id`, `created`, `saved`).
+- Completed full test verification:
+  - `pipenv run test`: 190 passed (100%).
+  - `pipenv run lint`: Clean, 0 errors.
+  - `pipenv run build`: Clean compilation.
+  - Pre-PR QA Gate: `pipenv run container && pipenv run api && pipenv run e2e` passed 100% (48 passed, 2 skipped, 0 failed).
 
