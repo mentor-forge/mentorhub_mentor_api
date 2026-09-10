@@ -1,6 +1,6 @@
 # F356 – Update Mentee schema in OpenAPI specification
 
-**Status:** Pending  
+**Status:** Shipped  
 **Type:** Feature  
 **Depends On:** none  
 **Description:** Update the `Mentee` and `MenteeUpdate` schemas in `docs/openapi.yaml` to align with the simplified Mentee dictionary from the schema server: rename `description` to `summary`, remove `focus`, `homework`, `schedule`, `next_appointment`, and `name`, set `additionalProperties: false`, and align endpoint response examples.
@@ -82,4 +82,16 @@ Run all commands from this API repository root:
 The agent must not update files outside this list.
 
 ## Execution Notes
+
+- Updated `Mentee` component schema in `docs/openapi.yaml`:
+  - Removed `name`, `description`, `focus`, `homework`, `schedule`, and `next_appointment`.
+  - Added `summary` with sentence pattern `'^[^\t\n]{0,255}$'`.
+  - Retained `_id`, `status`, `notes` (`maxLength: 4096`), `created`, and `saved`.
+  - Set `additionalProperties: false`.
+- Updated `MenteeUpdate` component schema:
+  - Allowed updating `summary`, `notes`, and `status`.
+  - Removed legacy mutable fields (`name`, `description`, `focus`, `homework`, `schedule`, `next_appointment`).
+  - Set `additionalProperties: false`.
+- Validated YAML with `yaml.safe_load`.
+- Verified `pipenv run lint` and `pipenv run build` pass cleanly.
 
