@@ -1,6 +1,6 @@
 # F354 – Start and Finish Encounter mutations
 
-**Status:** Pending  
+**Status:** Shipped  
 **Type:** Feature  
 **Depends On:** `F353_schedule_encounters_mutation`  
 **Description:** Implement Start Encounter and Finish Encounter lifecycle mutations. Add `start_encounter` and `finish_encounter` in `EncounterService` and routes `POST /api/encounter/<encounter_id>/start` and `POST /api/encounter/<encounter_id>/finish`. Starting an encounter verifies the mentee's sponsor organization has available customer subscription balance, transitions status to `active`, logs an event via `EventService.create_event`, and decrements the customer subscription balance. Finishing an encounter transitions status from `active` to `complete`. Both mutations return enriched encounter documents.
@@ -135,3 +135,17 @@ Run all commands from this API repository root:
 The agent must not update files outside this list.
 
 ## Execution Notes
+
+1. Implemented `_verify_and_decrement_subscription` in `src/services/encounter_service.py`:
+   - Resolved customer from mentee's Profile `customer_id`.
+   - Verified active subscription exists with `free_encounters_remaining > 0`.
+   - Decremented `free_encounters_remaining` and persisted on Customer via `MongoIO.update_document`.
+2. Implemented `start_encounter`:
+   - Enforced owner/admin RBAC and `"scheduled"` status guardrail.
+   - Decremented subscription balance, transitioned status to `"active"`, logged event via `EventService.create_event`, and returned enriched document.
+3. Implemented `finish_encounter`:
+   - Enforced owner/admin RBAC and `"active"` status guardrail.
+   - Transitioned status to `"complete"` and returned enriched document.
+4. Mounted `POST /api/encounter/<encounter_id>/start` and `POST /api/encounter/<encounter_id>/finish` on blueprint in `src/routes/encounter_routes.py`.
+5. Added unit tests in `test/services/test_encounter_service.py` and route tests in `test/routes/test_encounter_routes.py`.
+6. Verified with `pipenv run format`, `pipenv run test` (190 passed), and `pipenv run lint`.

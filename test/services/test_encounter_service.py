@@ -19,6 +19,9 @@ def _make_config():
     mock_config = MagicMock()
     mock_config.ENCOUNTER_COLLECTION_NAME = "Encounter"
     mock_config.PROFILE_COLLECTION_NAME = "Profile"
+    mock_config.CUSTOMER_COLLECTION_NAME = "Customer"
+    mock_config.EVENT_COLLECTION_NAME = "Event"
+    mock_config.EVENT_TYPE_ENCOUNTER = "encounter"
     mock_config.ROLE_MENTOR = "mentor"
     mock_config.ROLE_ADMIN = "admin"
     return mock_config
@@ -776,6 +779,336 @@ class TestEncounterService(unittest.TestCase):
         with self.assertRaises(HTTPBadRequest):
             EncounterService.schedule_encounters(
                 bad_dow, self.mock_admin_token, self.mock_breadcrumb
+            )
+
+    @patch("src.services.event_service.EventService.create_event")
+    @patch("src.services.profile_service.ProfileService.get_profile_by_token")
+    @patch("src.services.encounter_service.Config.get_instance")
+    @patch("src.services.encounter_service.MongoIO.get_instance")
+    def test_start_encounter_success(
+        self, mock_get_mongo, mock_get_config, mock_get_profile, mock_create_event
+    ):
+        """Owning mentor starts scheduled encounter, decrements subscription balance, logs event."""
+        mock_config = _make_config()
+        mock_get_config.return_value = mock_config
+        mock_get_profile.return_value = {"_id": self.VALID_MENTOR_ID}
+
+        cust_sub = {"status": "active", "free_encounters_remaining": 5}
+        customer_doc = {"_id": "cust-1", "subscriptions": [cust_sub]}
+        mentee_profile = {
+            "_id": self.VALID_MENTEE_ID,
+            "customer_id": "cust-1",
+            "display_name": "Bob Mentee",
+        }
+        mentor_profile = {
+            "_id": self.VALID_MENTOR_ID,
+            "display_name": "Jane Mentor",
+        }
+        encounter_doc = {
+            "_id": "enc-1",
+            "mentor_id": self.VALID_MENTOR_ID,
+            "mentee_id": self.VALID_MENTEE_ID,
+            "status": "scheduled",
+        }
+
+        mock_mongo = MagicMock()
+
+        def mock_get_doc(coll, doc_id):
+            if coll == "Customer" and str(doc_id) == "cust-1":
+                return customer_doc
+            if coll == "Profile" and str(doc_id) == self.VALID_MENTEE_ID:
+                return mentee_profile
+            if coll == "Profile" and str(doc_id) == self.VALID_MENTOR_ID:
+                return mentor_profile
+            if coll == "Encounter" and str(doc_id) == "enc-1":
+                return encounter_doc
+            return None
+
+        mock_mongo.get_document.side_effect = mock_get_doc
+        mock_mongo.update_document.return_value = {
+            "_id": "enc-1",
+            "mentor_id": self.VALID_MENTOR_ID,
+            "mentee_id": self.VALID_MENTEE_ID,
+            "status": "active",
+        }
+        mock_get_mongo.return_value = mock_mongo
+
+        result = EncounterService.start_encounter(
+            "enc-1", self.mock_mentor_token, self.mock_breadcrumb
+        )
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result["status"], "active")
+        self.assertEqual(result["mentor_name"], "Jane Mentor")
+        self.assertEqual(result["mentee_name"], "Bob Mentee")
+
+        # Verify customer subscription balance decremented
+        self.assertEqual(cust_sub["free_encounters_remaining"], 4)
+        mock_mongo.update_document.assert_any_call(
+            "Customer",
+            document_id="cust-1",
+            set_data={"subscriptions": [cust_sub], "saved": self.mock_breadcrumb},
+        )
+
+        # Verify encounter status updated to active
+        mock_mongo.update_document.assert_any_call(
+            "Encounter",
+            document_id="enc-1",
+            set_data={"status": "active", "saved": self.mock_breadcrumb},
+        )
+
+        # Verify event logged
+        mock_create_event.assert_called_once()
+        event_arg = mock_create_event.call_args[0][0]
+        self.assertEqual(event_arg["type"], "encounter")
+        self.assertEqual(event_arg["context"]["encounter_id"], "enc-1")
+        self.assertEqual(event_arg["context"]["mentor_id"], self.VALID_MENTOR_ID)
+        self.assertEqual(event_arg["context"]["mentee_id"], self.VALID_MENTEE_ID)
+
+    @patch("src.services.profile_service.ProfileService.get_profile_by_token")
+    @patch("src.services.encounter_service.Config.get_instance")
+    @patch("src.services.encounter_service.MongoIO.get_instance")
+    def test_start_encounter_insufficient_subscription_balance(
+        self, mock_get_mongo, mock_get_config, mock_get_profile
+    ):
+        """Start encounter raises HTTPForbidden when customer has 0 remaining balance."""
+        mock_config = _make_config()
+        mock_get_config.return_value = mock_config
+        mock_get_profile.return_value = {"_id": self.VALID_MENTOR_ID}
+
+        mock_mongo = MagicMock()
+        mock_mongo.get_document.side_effect = lambda coll, doc_id: {
+            ("Encounter", "enc-1"): {
+                "_id": "enc-1",
+                "mentor_id": self.VALID_MENTOR_ID,
+                "mentee_id": self.VALID_MENTEE_ID,
+                "status": "scheduled",
+            },
+            ("Profile", self.VALID_MENTEE_ID): {
+                "_id": self.VALID_MENTEE_ID,
+                "customer_id": "cust-1",
+            },
+            ("Customer", "cust-1"): {
+                "_id": "cust-1",
+                "subscriptions": [{"status": "active", "free_encounters_remaining": 0}],
+            },
+        }.get((coll, str(doc_id)))
+        mock_get_mongo.return_value = mock_mongo
+
+        with self.assertRaises(HTTPForbidden):
+            EncounterService.start_encounter(
+                "enc-1", self.mock_mentor_token, self.mock_breadcrumb
+            )
+
+    @patch("src.services.profile_service.ProfileService.get_profile_by_token")
+    @patch("src.services.encounter_service.Config.get_instance")
+    @patch("src.services.encounter_service.MongoIO.get_instance")
+    def test_start_encounter_missing_customer(
+        self, mock_get_mongo, mock_get_config, mock_get_profile
+    ):
+        """Start encounter raises HTTPForbidden when mentee profile has no customer."""
+        mock_config = _make_config()
+        mock_get_config.return_value = mock_config
+        mock_get_profile.return_value = {"_id": self.VALID_MENTOR_ID}
+
+        mock_mongo = MagicMock()
+        mock_mongo.get_document.side_effect = lambda coll, doc_id: {
+            ("Encounter", "enc-1"): {
+                "_id": "enc-1",
+                "mentor_id": self.VALID_MENTOR_ID,
+                "mentee_id": self.VALID_MENTEE_ID,
+                "status": "scheduled",
+            },
+            ("Profile", self.VALID_MENTEE_ID): {
+                "_id": self.VALID_MENTEE_ID,
+                "customer_id": None,
+            },
+        }.get((coll, str(doc_id)))
+        mock_get_mongo.return_value = mock_mongo
+
+        with self.assertRaises(HTTPForbidden):
+            EncounterService.start_encounter(
+                "enc-1", self.mock_mentor_token, self.mock_breadcrumb
+            )
+
+    @patch("src.services.profile_service.ProfileService.get_profile_by_token")
+    @patch("src.services.encounter_service.Config.get_instance")
+    @patch("src.services.encounter_service.MongoIO.get_instance")
+    def test_start_encounter_invalid_status(
+        self, mock_get_mongo, mock_get_config, mock_get_profile
+    ):
+        """Start encounter raises HTTPForbidden if encounter is not 'scheduled'."""
+        mock_config = _make_config()
+        mock_get_config.return_value = mock_config
+        mock_get_profile.return_value = {"_id": self.VALID_MENTOR_ID}
+
+        mock_mongo = MagicMock()
+        for invalid_status in ["active", "complete", "archived"]:
+            mock_mongo.get_document.return_value = {
+                "_id": "enc-1",
+                "mentor_id": self.VALID_MENTOR_ID,
+                "status": invalid_status,
+            }
+            mock_get_mongo.return_value = mock_mongo
+
+            with self.assertRaises(HTTPForbidden):
+                EncounterService.start_encounter(
+                    "enc-1", self.mock_mentor_token, self.mock_breadcrumb
+                )
+
+    @patch("src.services.profile_service.ProfileService.get_profile_by_token")
+    @patch("src.services.encounter_service.Config.get_instance")
+    @patch("src.services.encounter_service.MongoIO.get_instance")
+    def test_start_encounter_forbidden_other_mentor(
+        self, mock_get_mongo, mock_get_config, mock_get_profile
+    ):
+        """Non-owning mentor cannot start encounter."""
+        mock_config = _make_config()
+        mock_get_config.return_value = mock_config
+        mock_get_profile.return_value = {"_id": "other-mentor"}
+
+        mock_mongo = MagicMock()
+        mock_mongo.get_document.return_value = {
+            "_id": "enc-1",
+            "mentor_id": self.VALID_MENTOR_ID,
+            "status": "scheduled",
+        }
+        mock_get_mongo.return_value = mock_mongo
+
+        with self.assertRaises(HTTPForbidden):
+            EncounterService.start_encounter(
+                "enc-1", self.mock_other_mentor_token, self.mock_breadcrumb
+            )
+
+    @patch("src.services.encounter_service.Config.get_instance")
+    @patch("src.services.encounter_service.MongoIO.get_instance")
+    def test_start_encounter_not_found(self, mock_get_mongo, mock_get_config):
+        """Start encounter raises HTTPNotFound if encounter does not exist."""
+        mock_config = _make_config()
+        mock_get_config.return_value = mock_config
+        mock_mongo = MagicMock()
+        mock_mongo.get_document.return_value = None
+        mock_get_mongo.return_value = mock_mongo
+
+        with self.assertRaises(HTTPNotFound):
+            EncounterService.start_encounter(
+                "missing-id", self.mock_admin_token, self.mock_breadcrumb
+            )
+
+    @patch("src.services.profile_service.ProfileService.get_profile_by_token")
+    @patch("src.services.encounter_service.Config.get_instance")
+    @patch("src.services.encounter_service.MongoIO.get_instance")
+    def test_finish_encounter_success(
+        self, mock_get_mongo, mock_get_config, mock_get_profile
+    ):
+        """Owning mentor finishes active encounter."""
+        mock_config = _make_config()
+        mock_get_config.return_value = mock_config
+        mock_get_profile.return_value = {"_id": self.VALID_MENTOR_ID}
+
+        mock_mongo = MagicMock()
+        mock_mongo.get_document.side_effect = lambda coll, doc_id: {
+            ("Encounter", "enc-1"): {
+                "_id": "enc-1",
+                "mentor_id": self.VALID_MENTOR_ID,
+                "mentee_id": self.VALID_MENTEE_ID,
+                "status": "active",
+            },
+            ("Profile", self.VALID_MENTOR_ID): {
+                "_id": self.VALID_MENTOR_ID,
+                "display_name": "Jane Mentor",
+            },
+            ("Profile", self.VALID_MENTEE_ID): {
+                "_id": self.VALID_MENTEE_ID,
+                "display_name": "Bob Mentee",
+            },
+        }.get((coll, str(doc_id)))
+
+        mock_mongo.update_document.return_value = {
+            "_id": "enc-1",
+            "mentor_id": self.VALID_MENTOR_ID,
+            "mentee_id": self.VALID_MENTEE_ID,
+            "status": "complete",
+        }
+        mock_get_mongo.return_value = mock_mongo
+
+        result = EncounterService.finish_encounter(
+            "enc-1", self.mock_mentor_token, self.mock_breadcrumb
+        )
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result["status"], "complete")
+        self.assertEqual(result["mentor_name"], "Jane Mentor")
+        self.assertEqual(result["mentee_name"], "Bob Mentee")
+
+        mock_mongo.update_document.assert_called_once_with(
+            "Encounter",
+            document_id="enc-1",
+            set_data={"status": "complete", "saved": self.mock_breadcrumb},
+        )
+
+    @patch("src.services.profile_service.ProfileService.get_profile_by_token")
+    @patch("src.services.encounter_service.Config.get_instance")
+    @patch("src.services.encounter_service.MongoIO.get_instance")
+    def test_finish_encounter_invalid_status(
+        self, mock_get_mongo, mock_get_config, mock_get_profile
+    ):
+        """Finish encounter raises HTTPForbidden if encounter is not 'active'."""
+        mock_config = _make_config()
+        mock_get_config.return_value = mock_config
+        mock_get_profile.return_value = {"_id": self.VALID_MENTOR_ID}
+
+        mock_mongo = MagicMock()
+        for invalid_status in ["scheduled", "complete", "archived"]:
+            mock_mongo.get_document.return_value = {
+                "_id": "enc-1",
+                "mentor_id": self.VALID_MENTOR_ID,
+                "status": invalid_status,
+            }
+            mock_get_mongo.return_value = mock_mongo
+
+            with self.assertRaises(HTTPForbidden):
+                EncounterService.finish_encounter(
+                    "enc-1", self.mock_mentor_token, self.mock_breadcrumb
+                )
+
+    @patch("src.services.profile_service.ProfileService.get_profile_by_token")
+    @patch("src.services.encounter_service.Config.get_instance")
+    @patch("src.services.encounter_service.MongoIO.get_instance")
+    def test_finish_encounter_forbidden_other_mentor(
+        self, mock_get_mongo, mock_get_config, mock_get_profile
+    ):
+        """Non-owning mentor cannot finish encounter."""
+        mock_config = _make_config()
+        mock_get_config.return_value = mock_config
+        mock_get_profile.return_value = {"_id": "other-mentor"}
+
+        mock_mongo = MagicMock()
+        mock_mongo.get_document.return_value = {
+            "_id": "enc-1",
+            "mentor_id": self.VALID_MENTOR_ID,
+            "status": "active",
+        }
+        mock_get_mongo.return_value = mock_mongo
+
+        with self.assertRaises(HTTPForbidden):
+            EncounterService.finish_encounter(
+                "enc-1", self.mock_other_mentor_token, self.mock_breadcrumb
+            )
+
+    @patch("src.services.encounter_service.Config.get_instance")
+    @patch("src.services.encounter_service.MongoIO.get_instance")
+    def test_finish_encounter_not_found(self, mock_get_mongo, mock_get_config):
+        """Finish encounter raises HTTPNotFound if encounter does not exist."""
+        mock_config = _make_config()
+        mock_get_config.return_value = mock_config
+        mock_mongo = MagicMock()
+        mock_mongo.get_document.return_value = None
+        mock_get_mongo.return_value = mock_mongo
+
+        with self.assertRaises(HTTPNotFound):
+            EncounterService.finish_encounter(
+                "missing-id", self.mock_admin_token, self.mock_breadcrumb
             )
 
 

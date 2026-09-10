@@ -381,3 +381,143 @@ class EncounterService(SharedEncounterService):
         except Exception as e:
             logger.error(f"Error updating encounter {encounter_id}: {str(e)}")
             raise HTTPInternalServerError(f"Failed to update encounter {encounter_id}")
+
+    @classmethod
+    def _verify_and_decrement_subscription(cls, mentee_id, mongo, config, breadcrumb):
+        """Verify mentee has customer with active subscription and positive balance, then decrement balance."""
+        if not mentee_id:
+            raise HTTPForbidden("Mentee has no associated customer")
+
+        profile = mongo.get_document(config.PROFILE_COLLECTION_NAME, str(mentee_id))
+        if not profile or not profile.get("customer_id"):
+            raise HTTPForbidden("Mentee has no associated customer")
+
+        customer_id = profile["customer_id"]
+        customer_collection = getattr(config, "CUSTOMER_COLLECTION_NAME", "Customer")
+        customer = mongo.get_document(customer_collection, str(customer_id))
+        if not customer:
+            raise HTTPForbidden(f"Customer {customer_id} not found")
+
+        subscriptions = customer.get("subscriptions", [])
+        qualifying_sub = None
+        for sub in subscriptions:
+            if (
+                sub.get("status") == "active"
+                and sub.get("free_encounters_remaining", 0) > 0
+            ):
+                qualifying_sub = sub
+                break
+
+        if qualifying_sub is None:
+            raise HTTPForbidden("Insufficient subscription balance to start encounter")
+
+        qualifying_sub["free_encounters_remaining"] = (
+            qualifying_sub.get("free_encounters_remaining", 0) - 1
+        )
+
+        mongo.update_document(
+            customer_collection,
+            document_id=str(customer_id),
+            set_data={"subscriptions": subscriptions, "saved": breadcrumb},
+        )
+
+    @classmethod
+    def start_encounter(cls, encounter_id, token, breadcrumb):
+        """Start an encounter: verify scheduled status, decrement customer subscription, set active, log event."""
+        try:
+            mongo = MongoIO.get_instance()
+            config = Config.get_instance()
+            encounter = mongo.get_document(
+                config.ENCOUNTER_COLLECTION_NAME, encounter_id
+            )
+            if encounter is None:
+                raise HTTPNotFound(f"Encounter {encounter_id} not found")
+
+            cls._check_permission_write(
+                token, "update", breadcrumb, encounter=encounter
+            )
+
+            current_status = encounter.get("status")
+            if current_status != "scheduled":
+                raise HTTPForbidden(
+                    f"Cannot start encounter: status is '{current_status}', expected 'scheduled'"
+                )
+
+            cls._verify_and_decrement_subscription(
+                encounter.get("mentee_id"), mongo, config, breadcrumb
+            )
+
+            updated = mongo.update_document(
+                config.ENCOUNTER_COLLECTION_NAME,
+                document_id=encounter_id,
+                set_data={"status": "active", "saved": breadcrumb},
+            )
+            if updated is None:
+                raise HTTPNotFound(f"Encounter {encounter_id} not found")
+
+            from src.services.event_service import EventService
+
+            EventService.create_event(
+                {
+                    "type": getattr(config, "EVENT_TYPE_ENCOUNTER", "encounter"),
+                    "context": {
+                        "encounter_id": str(encounter_id),
+                        "mentor_id": str(encounter.get("mentor_id")),
+                        "mentee_id": str(encounter.get("mentee_id")),
+                    },
+                },
+                token,
+                breadcrumb,
+            )
+
+            updated = cls._enrich_encounter(updated, mongo, config)
+            logger.info(
+                f"Started encounter {encounter_id} for user {token.get('user_id')}"
+            )
+            return updated
+        except (HTTPBadRequest, HTTPForbidden, HTTPNotFound):
+            raise
+        except Exception as e:
+            logger.error(f"Error starting encounter {encounter_id}: {str(e)}")
+            raise HTTPInternalServerError(f"Failed to start encounter {encounter_id}")
+
+    @classmethod
+    def finish_encounter(cls, encounter_id, token, breadcrumb):
+        """Finish an encounter: verify active status, set status complete."""
+        try:
+            mongo = MongoIO.get_instance()
+            config = Config.get_instance()
+            encounter = mongo.get_document(
+                config.ENCOUNTER_COLLECTION_NAME, encounter_id
+            )
+            if encounter is None:
+                raise HTTPNotFound(f"Encounter {encounter_id} not found")
+
+            cls._check_permission_write(
+                token, "update", breadcrumb, encounter=encounter
+            )
+
+            current_status = encounter.get("status")
+            if current_status != "active":
+                raise HTTPForbidden(
+                    f"Cannot finish encounter: status is '{current_status}', expected 'active'"
+                )
+
+            updated = mongo.update_document(
+                config.ENCOUNTER_COLLECTION_NAME,
+                document_id=encounter_id,
+                set_data={"status": "complete", "saved": breadcrumb},
+            )
+            if updated is None:
+                raise HTTPNotFound(f"Encounter {encounter_id} not found")
+
+            updated = cls._enrich_encounter(updated, mongo, config)
+            logger.info(
+                f"Finished encounter {encounter_id} for user {token.get('user_id')}"
+            )
+            return updated
+        except (HTTPBadRequest, HTTPForbidden, HTTPNotFound):
+            raise
+        except Exception as e:
+            logger.error(f"Error finishing encounter {encounter_id}: {str(e)}")
+            raise HTTPInternalServerError(f"Failed to finish encounter {encounter_id}")
