@@ -34,6 +34,76 @@ class EncounterService(SharedEncounterService):
     """
 
     @classmethod
+    def _enrich_encounter(cls, encounter, mongo=None, config=None):
+        """Enrich an encounter document with mentor_name and mentee_name from Profile display_name."""
+        if not encounter or not isinstance(encounter, dict):
+            return encounter
+        mongo = mongo or MongoIO.get_instance()
+        config = config or Config.get_instance()
+
+        mentor_id = encounter.get("mentor_id")
+        if mentor_id:
+            mentor = mongo.get_document(config.PROFILE_COLLECTION_NAME, str(mentor_id))
+            encounter["mentor_name"] = mentor.get("display_name") if mentor else None
+        else:
+            encounter["mentor_name"] = None
+
+        mentee_id = encounter.get("mentee_id")
+        if mentee_id:
+            mentee = mongo.get_document(config.PROFILE_COLLECTION_NAME, str(mentee_id))
+            encounter["mentee_name"] = mentee.get("display_name") if mentee else None
+        else:
+            encounter["mentee_name"] = None
+
+        return encounter
+
+    @classmethod
+    def _enrich_encounters(cls, encounters, mongo=None, config=None):
+        """Enrich a list of encounter documents with mentor_name and mentee_name."""
+        if not encounters:
+            return encounters
+        mongo = mongo or MongoIO.get_instance()
+        config = config or Config.get_instance()
+        cache = {}
+
+        def get_profile_name(pid):
+            if not pid:
+                return None
+            key = str(pid)
+            if key in cache:
+                return cache[key]
+            prof = mongo.get_document(config.PROFILE_COLLECTION_NAME, key)
+            name = prof.get("display_name") if prof else None
+            cache[key] = name
+            return name
+
+        for enc in encounters:
+            if isinstance(enc, dict):
+                enc["mentor_name"] = get_profile_name(enc.get("mentor_id"))
+                enc["mentee_name"] = get_profile_name(enc.get("mentee_id"))
+        return encounters
+
+    @classmethod
+    def get_encounter(cls, encounter_id, token, breadcrumb):
+        """Retrieve a specific encounter document by ID and enrich with names."""
+        encounter = super().get_encounter(encounter_id, token, breadcrumb)
+        return cls._enrich_encounter(encounter)
+
+    @classmethod
+    def get_encounters_for_mentee(cls, mentee_id, token, breadcrumb, offset=0, size=20):
+        """Retrieve encounters for a mentee and enrich with names."""
+        encounters = super().get_encounters_for_mentee(
+            mentee_id, token, breadcrumb, offset=offset, size=size
+        )
+        return cls._enrich_encounters(encounters)
+
+    @classmethod
+    def get_recent_encounter(cls, mentee_id, token, breadcrumb):
+        """Retrieve the most recent encounter for a mentee and enrich with names."""
+        encounter = super().get_recent_encounter(mentee_id, token, breadcrumb)
+        return cls._enrich_encounter(encounter)
+
+    @classmethod
     def _validate_update_data(cls, data):
         """Reject updates targeting system-managed fields."""
         restricted_fields = ["_id", "created", "saved"]
@@ -129,6 +199,7 @@ class EncounterService(SharedEncounterService):
             )
             if updated is None:
                 raise HTTPNotFound(f"Encounter {encounter_id} not found")
+            updated = cls._enrich_encounter(updated, mongo, config)
             logger.info(
                 f"Updated encounter {encounter_id} for user {token.get('user_id')}"
             )

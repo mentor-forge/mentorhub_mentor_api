@@ -326,6 +326,118 @@ class TestEncounterService(unittest.TestCase):
                 self.mock_breadcrumb,
             )
 
+    @patch("src.services.encounter_service.Config.get_instance")
+    @patch("src.services.encounter_service.MongoIO.get_instance")
+    def test_enrich_encounter_populates_display_names(
+        self, mock_get_mongo, mock_get_config
+    ):
+        """Encounter document is enriched with mentor_name and mentee_name."""
+        mock_config = _make_config()
+        mock_get_config.return_value = mock_config
+
+        mock_mongo = MagicMock()
+
+        def mock_get_doc(collection, doc_id):
+            if str(doc_id) == self.VALID_MENTOR_ID:
+                return {"_id": doc_id, "display_name": "Jane Mentor"}
+            if str(doc_id) == self.VALID_MENTOR_ID:
+                return {"_id": doc_id, "display_name": "Jane Mentor"}
+            if str(doc_id) == self.VALID_MENTEE_ID:
+                return {"_id": doc_id, "display_name": "Bob Mentee"}
+            return None
+
+        mock_mongo.get_document.side_effect = mock_get_doc
+        mock_get_mongo.return_value = mock_mongo
+
+        raw_encounter = {
+            "_id": "enc-1",
+            "mentor_id": self.VALID_MENTOR_ID,
+            "mentee_id": self.VALID_MENTEE_ID,
+        }
+        enriched = EncounterService._enrich_encounter(raw_encounter)
+        self.assertEqual(enriched["mentor_name"], "Jane Mentor")
+        self.assertEqual(enriched["mentee_name"], "Bob Mentee")
+
+    @patch("src.services.encounter_service.Config.get_instance")
+    @patch("src.services.encounter_service.MongoIO.get_instance")
+    def test_enrich_encounter_handles_missing_profiles(
+        self, mock_get_mongo, mock_get_config
+    ):
+        """Encounter enrichment sets names to None when profile not found."""
+        mock_config = _make_config()
+        mock_get_config.return_value = mock_config
+
+        mock_mongo = MagicMock()
+        mock_mongo.get_document.return_value = None
+        mock_get_mongo.return_value = mock_mongo
+
+        raw_encounter = {
+            "_id": "enc-1",
+            "mentor_id": "507f1f77bcf86cd799439099",
+            "mentee_id": "507f1f77bcf86cd799439098",
+        }
+        enriched = EncounterService._enrich_encounter(raw_encounter)
+        self.assertIsNone(enriched["mentor_name"])
+        self.assertIsNone(enriched["mentee_name"])
+
+    @patch("src.services.encounter_service.Config.get_instance")
+    @patch("src.services.encounter_service.MongoIO.get_instance")
+    def test_enrich_encounters_list(self, mock_get_mongo, mock_get_config):
+        """List of encounters is enriched with names."""
+        mock_config = _make_config()
+        mock_get_config.return_value = mock_config
+
+        mock_mongo = MagicMock()
+        mock_mongo.get_document.side_effect = lambda coll, doc_id: {
+            "_id": doc_id,
+            "display_name": f"Name_{doc_id}",
+        }
+        mock_get_mongo.return_value = mock_mongo
+
+        encounters = [
+            {
+                "_id": "enc-1",
+                "mentor_id": self.VALID_MENTOR_ID,
+                "mentee_id": self.VALID_MENTEE_ID,
+            },
+            {
+                "_id": "enc-2",
+                "mentor_id": self.VALID_MENTOR_ID,
+                "mentee_id": self.VALID_MENTEE_ID,
+            },
+        ]
+        enriched_list = EncounterService._enrich_encounters(encounters)
+        self.assertEqual(len(enriched_list), 2)
+        self.assertEqual(
+            enriched_list[0]["mentor_name"], f"Name_{self.VALID_MENTOR_ID}"
+        )
+        self.assertEqual(
+            enriched_list[0]["mentee_name"], f"Name_{self.VALID_MENTEE_ID}"
+        )
+        self.assertEqual(
+            enriched_list[1]["mentor_name"], f"Name_{self.VALID_MENTOR_ID}"
+        )
+
+    @patch("api_utils.services.EncounterService.get_encounter")
+    @patch("src.services.encounter_service.EncounterService._enrich_encounter")
+    def test_get_encounter_calls_enrichment(self, mock_enrich, mock_super_get):
+        """get_encounter delegates to super and enriches."""
+        mock_super_get.return_value = {"_id": "enc-1"}
+        mock_enrich.return_value = {
+            "_id": "enc-1",
+            "mentor_name": "M",
+            "mentee_name": "E",
+        }
+
+        result = EncounterService.get_encounter(
+            "enc-1", self.mock_admin_token, self.mock_breadcrumb
+        )
+        mock_super_get.assert_called_once_with(
+            "enc-1", self.mock_admin_token, self.mock_breadcrumb
+        )
+        mock_enrich.assert_called_once_with({"_id": "enc-1"})
+        self.assertEqual(result["mentor_name"], "M")
+
 
 if __name__ == "__main__":
     unittest.main()
