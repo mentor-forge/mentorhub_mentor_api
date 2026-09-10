@@ -7,6 +7,7 @@ from unittest.mock import patch, MagicMock
 from bson import ObjectId
 from src.services.encounter_service import EncounterService
 from api_utils.flask_utils.exceptions import (
+    HTTPBadRequest,
     HTTPForbidden,
     HTTPNotFound,
     HTTPInternalServerError,
@@ -522,6 +523,260 @@ class TestEncounterService(unittest.TestCase):
         )
         mock_enrich.assert_called_once_with({"_id": "enc-1"})
         self.assertEqual(result["mentor_name"], "M")
+
+    @patch("src.services.profile_service.ProfileService.get_profile_by_token")
+    @patch("src.services.encounter_service.PlanService.get_plan")
+    @patch("src.services.encounter_service.Config.get_instance")
+    @patch("src.services.encounter_service.MongoIO.get_instance")
+    def test_schedule_encounters_success_mentor(
+        self, mock_get_mongo, mock_get_config, mock_get_plan, mock_get_profile
+    ):
+        """Owning mentor schedules recurring encounters successfully."""
+        mock_config = _make_config()
+        mock_get_config.return_value = mock_config
+        mock_get_profile.return_value = {"_id": self.VALID_MENTOR_ID}
+        mock_get_plan.return_value = {
+            "_id": self.VALID_PLAN_ID,
+            "steps": ["Step 1", "Step 2"],
+        }
+
+        created_docs = []
+        mock_mongo = MagicMock()
+
+        def mock_create(coll, doc):
+            doc_id = f"enc-{len(created_docs) + 1}"
+            stored = dict(doc)
+            stored["_id"] = doc_id
+            created_docs.append(stored)
+            return doc_id
+
+        def mock_get_doc(coll, doc_id):
+            if str(doc_id) == self.VALID_MENTOR_ID:
+                return {"_id": doc_id, "display_name": "Jane Mentor"}
+            if str(doc_id) == self.VALID_MENTEE_ID:
+                return {"_id": doc_id, "display_name": "Bob Mentee"}
+            for d in created_docs:
+                if str(d.get("_id")) == str(doc_id):
+                    return dict(d)
+            return None
+
+        mock_mongo.create_document.side_effect = mock_create
+        mock_mongo.get_document.side_effect = mock_get_doc
+        mock_get_mongo.return_value = mock_mongo
+
+        payload = {
+            "mentor_id": self.VALID_MENTOR_ID,
+            "mentee_id": self.VALID_MENTEE_ID,
+            "plan_id": self.VALID_PLAN_ID,
+            "start_date": "2024-02-01",  # Thursday
+            "day_of_week": 1,  # Monday -> 2024-02-05
+            "time_of_day": "14:00",
+            "recurrence_days": 7,
+            "count": 3,
+        }
+
+        encounters = EncounterService.schedule_encounters(
+            payload, self.mock_mentor_token, self.mock_breadcrumb
+        )
+
+        self.assertEqual(len(encounters), 3)
+        self.assertEqual(mock_mongo.create_document.call_count, 3)
+
+        # Check first encounter (adjusted to Monday Feb 5)
+        self.assertEqual(encounters[0]["appointment"]["from"], "2024-02-05T14:00:00Z")
+        self.assertEqual(encounters[0]["appointment"]["to"], "2024-02-05T15:00:00Z")
+        self.assertEqual(encounters[0]["status"], "scheduled")
+        self.assertEqual(len(encounters[0]["agenda"]), 2)
+        self.assertEqual(encounters[0]["agenda"][0]["step"], "Step 1")
+        self.assertFalse(encounters[0]["agenda"][0]["checked"])
+        self.assertEqual(encounters[0]["mentor_name"], "Jane Mentor")
+        self.assertEqual(encounters[0]["mentee_name"], "Bob Mentee")
+
+        # Check second encounter (Feb 12)
+        self.assertEqual(encounters[1]["appointment"]["from"], "2024-02-12T14:00:00Z")
+        # Check third encounter (Feb 19)
+        self.assertEqual(encounters[2]["appointment"]["from"], "2024-02-19T14:00:00Z")
+
+    @patch("src.services.encounter_service.PlanService.get_plan")
+    @patch("src.services.encounter_service.Config.get_instance")
+    @patch("src.services.encounter_service.MongoIO.get_instance")
+    def test_schedule_encounters_success_admin(
+        self, mock_get_mongo, mock_get_config, mock_get_plan
+    ):
+        """Admin schedules recurring encounters for any mentor."""
+        mock_config = _make_config()
+        mock_get_config.return_value = mock_config
+        mock_get_plan.return_value = {
+            "_id": self.VALID_PLAN_ID,
+            "checklist": ["Check 1"],
+        }
+
+        mock_mongo = MagicMock()
+        mock_mongo.create_document.return_value = "enc-1"
+        mock_mongo.get_document.return_value = {
+            "_id": "enc-1",
+            "mentor_id": self.VALID_MENTOR_ID,
+            "mentee_id": self.VALID_MENTEE_ID,
+            "status": "scheduled",
+        }
+        mock_get_mongo.return_value = mock_mongo
+
+        payload = {
+            "mentor_id": self.VALID_MENTOR_ID,
+            "mentee_id": self.VALID_MENTEE_ID,
+            "plan_id": self.VALID_PLAN_ID,
+            "start_date": "2024-02-01",
+            "time_of_day": "10:30",
+            "count": 1,
+        }
+
+        encounters = EncounterService.schedule_encounters(
+            payload, self.mock_admin_token, self.mock_breadcrumb
+        )
+        self.assertEqual(len(encounters), 1)
+
+    @patch("src.services.encounter_service.PlanService.get_plan")
+    @patch("src.services.encounter_service.Config.get_instance")
+    @patch("src.services.encounter_service.MongoIO.get_instance")
+    def test_schedule_encounters_defaults(
+        self, mock_get_mongo, mock_get_config, mock_get_plan
+    ):
+        """Omitting day_of_week and recurrence_days uses start_date and 7 days."""
+        mock_config = _make_config()
+        mock_get_config.return_value = mock_config
+        mock_get_plan.return_value = {"_id": self.VALID_PLAN_ID}
+
+        created = []
+        mock_mongo = MagicMock()
+
+        def mock_create(coll, doc):
+            created.append(doc)
+            return "id"
+
+        mock_mongo.create_document.side_effect = mock_create
+        mock_mongo.get_document.return_value = None
+        mock_get_mongo.return_value = mock_mongo
+
+        payload = {
+            "mentor_id": self.VALID_MENTOR_ID,
+            "mentee_id": self.VALID_MENTEE_ID,
+            "plan_id": self.VALID_PLAN_ID,
+            "start_date": "2024-02-01",  # Thursday
+            "time_of_day": "09:00",
+            "count": 2,
+        }
+
+        encounters = EncounterService.schedule_encounters(
+            payload, self.mock_admin_token, self.mock_breadcrumb
+        )
+        self.assertEqual(len(encounters), 2)
+        # Default start date is Feb 01 (since day_of_week defaulted to Thursday)
+        self.assertEqual(created[0]["appointment"]["from"], "2024-02-01T09:00:00Z")
+        self.assertEqual(created[1]["appointment"]["from"], "2024-02-08T09:00:00Z")
+
+    @patch("src.services.profile_service.ProfileService.get_profile_by_token")
+    @patch("src.services.encounter_service.Config.get_instance")
+    def test_schedule_encounters_forbidden_other_mentor(
+        self, mock_get_config, mock_get_profile
+    ):
+        """Mentor cannot schedule encounters for another mentor."""
+        mock_config = _make_config()
+        mock_get_config.return_value = mock_config
+        mock_get_profile.return_value = {"_id": "different-mentor-id"}
+
+        payload = {
+            "mentor_id": self.VALID_MENTOR_ID,
+            "mentee_id": self.VALID_MENTEE_ID,
+            "plan_id": self.VALID_PLAN_ID,
+            "start_date": "2024-02-01",
+            "time_of_day": "14:00",
+            "count": 1,
+        }
+
+        with self.assertRaises(HTTPForbidden):
+            EncounterService.schedule_encounters(
+                payload, self.mock_mentor_token, self.mock_breadcrumb
+            )
+
+    @patch("src.services.encounter_service.Config.get_instance")
+    def test_schedule_encounters_forbidden_user_role(self, mock_get_config):
+        """User role cannot schedule encounters."""
+        mock_config = _make_config()
+        mock_get_config.return_value = mock_config
+
+        payload = {
+            "mentor_id": self.VALID_MENTOR_ID,
+            "mentee_id": self.VALID_MENTEE_ID,
+            "plan_id": self.VALID_PLAN_ID,
+            "start_date": "2024-02-01",
+            "time_of_day": "14:00",
+            "count": 1,
+        }
+
+        with self.assertRaises(HTTPForbidden):
+            EncounterService.schedule_encounters(
+                payload, self.mock_user_token, self.mock_breadcrumb
+            )
+
+    @patch("src.services.encounter_service.Config.get_instance")
+    def test_schedule_encounters_missing_and_invalid_fields(self, mock_get_config):
+        """Validation errors raise HTTPBadRequest."""
+        mock_config = _make_config()
+        mock_get_config.return_value = mock_config
+
+        base_valid = {
+            "mentor_id": self.VALID_MENTOR_ID,
+            "mentee_id": self.VALID_MENTEE_ID,
+            "plan_id": self.VALID_PLAN_ID,
+            "start_date": "2024-02-01",
+            "time_of_day": "14:00",
+            "count": 1,
+        }
+
+        # Missing required field
+        for req in [
+            "mentor_id",
+            "mentee_id",
+            "plan_id",
+            "start_date",
+            "time_of_day",
+            "count",
+        ]:
+            payload = dict(base_valid)
+            del payload[req]
+            with self.assertRaises(HTTPBadRequest):
+                EncounterService.schedule_encounters(
+                    payload, self.mock_admin_token, self.mock_breadcrumb
+                )
+
+        # Invalid start_date
+        bad_date = dict(base_valid, start_date="invalid-date")
+        with self.assertRaises(HTTPBadRequest):
+            EncounterService.schedule_encounters(
+                bad_date, self.mock_admin_token, self.mock_breadcrumb
+            )
+
+        # Invalid time_of_day
+        bad_time = dict(base_valid, time_of_day="25:99")
+        with self.assertRaises(HTTPBadRequest):
+            EncounterService.schedule_encounters(
+                bad_time, self.mock_admin_token, self.mock_breadcrumb
+            )
+
+        # Invalid count
+        for bad_count in [0, -1, "not-int"]:
+            payload = dict(base_valid, count=bad_count)
+            with self.assertRaises(HTTPBadRequest):
+                EncounterService.schedule_encounters(
+                    payload, self.mock_admin_token, self.mock_breadcrumb
+                )
+
+        # Invalid day_of_week
+        bad_dow = dict(base_valid, day_of_week=7)
+        with self.assertRaises(HTTPBadRequest):
+            EncounterService.schedule_encounters(
+                bad_dow, self.mock_admin_token, self.mock_breadcrumb
+            )
 
 
 if __name__ == "__main__":

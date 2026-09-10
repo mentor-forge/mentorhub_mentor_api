@@ -60,4 +60,16 @@ def create_encounter_routes():
         )
         return jsonify(updated_encounter), 200
 
+    @bp.route("/schedule", methods=["POST"])
+    @handle_route_exceptions
+    def schedule_encounters():
+        token = create_flask_token()
+        breadcrumb = create_flask_breadcrumb(token)
+        data = request.get_json() or {}
+        encounters = EncounterService.schedule_encounters(data, token, breadcrumb)
+        logger.info(
+            f"schedule_encounters Success {str(breadcrumb['at_time'])}, {breadcrumb['correlation_id']}"
+        )
+        return jsonify(encounters), 201
+
     return bp

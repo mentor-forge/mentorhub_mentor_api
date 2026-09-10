@@ -1,6 +1,6 @@
 # F353 – Schedule Encounters mutation
 
-**Status:** Pending  
+**Status:** Shipped  
 **Type:** Feature  
 **Depends On:** `F352_patch_encounter_active_restrictions`  
 **Description:** Implement the Schedule Encounters mutation. Add `schedule_encounters` in `EncounterService` and route `POST /api/encounter/schedule`. Accepts `mentor_id`, `mentee_id`, `plan_id`, `start_date`, `day_of_week`, `time_of_day`, `recurrence_days`, and `count`. Generates `count` encounter documents with `status: "scheduled"`, calculated `appointment: { from, to }` intervals, auto-filled agenda from the referenced Plan's checklist, saves documents via `MongoIO.create_document`, and returns the enriched encounter documents.
@@ -116,3 +116,14 @@ Run all commands from this API repository root:
 The agent must not update files outside this list.
 
 ## Execution Notes
+
+1. Implemented `schedule_encounters` in `src/services/encounter_service.py`:
+   - Validated caller roles (mentor or admin) and ownership of `mentor_id` using updated `_check_permission_write`.
+   - Validated required fields: `mentor_id`, `mentee_id`, `plan_id`, `start_date`, `time_of_day`, `count`.
+   - Calculated recurrence schedule adjusting start date to target `day_of_week` (0=Sun..6=Sat) and advancing by `recurrence_days`.
+   - Fetched Plan via `PlanService.get_plan` and initialized agenda items with `checked: False`.
+   - Inserted documents via `MongoIO.create_document` with `status: "scheduled"` and formatted UTC ISO appointments.
+   - Enriched returned encounters with `mentor_name` and `mentee_name`.
+2. Mounted `POST /api/encounter/schedule` on blueprint in `src/routes/encounter_routes.py` returning 201.
+3. Added comprehensive unit tests in `test/services/test_encounter_service.py` and route tests in `test/routes/test_encounter_routes.py`.
+4. Verified with `pipenv run format`, `pipenv run test` (174 passed), and `pipenv run lint`.
