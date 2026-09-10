@@ -327,9 +327,7 @@ class TestMenteeService(unittest.TestCase):
 
     @patch("src.services.mentee_service.Config.get_instance")
     @patch("src.services.mentee_service.MongoIO.get_instance")
-    def test_mentor_of_profile_case_insensitive(
-        self, mock_get_mongo, mock_get_config
-    ):
+    def test_mentor_of_profile_case_insensitive(self, mock_get_mongo, mock_get_config):
         """_mentor_of_profile matches mentor_id case-insensitively (hex ObjectId vs token claim)."""
         mock_config = MagicMock()
         mock_config.PROFILE_COLLECTION_NAME = "Profile"

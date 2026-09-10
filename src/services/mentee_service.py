@@ -22,7 +22,6 @@ logger = logging.getLogger(__name__)
 
 RESTRICTED_FIELDS = ["_id", "profile_id", "created", "saved"]
 MENTEE_ID_PROPERTIES = ["_id", "profile_id"]
-MENTOR_ID_PROPERTIES = ["mentor_id"]
 
 
 class MenteeService(SharedMenteeService):
@@ -58,44 +57,6 @@ class MenteeService(SharedMenteeService):
             super()._check_permission(token, operation)
 
     @classmethod
-    def _mentor_of_profile(cls, profile_id, token):
-        """Return True when the caller is the mentor assigned to ``profile_id``."""
-        mentor_id = token.get("mentor_id")
-        token_profile_id = token.get("profile_id")
-        if not mentor_id and not token_profile_id:
-            return False
-
-        mongo = MongoIO.get_instance()
-        config = Config.get_instance()
-        profile = mongo.get_document(config.PROFILE_COLLECTION_NAME, str(profile_id))
-        if profile is None:
-            return False
-
-        profile_mentor_id = profile.get("mentor_id")
-        if isinstance(profile_mentor_id, dict) and "$oid" in profile_mentor_id:
-            profile_mentor_id = profile_mentor_id["$oid"]
-        if not profile_mentor_id:
-            return False
-
-        profile_box = {"mentor_id": profile_mentor_id}
-        try:
-            encode_document(profile_box, MENTOR_ID_PROPERTIES, [])
-        except ValueError:
-            return False
-        expected_mentor_oid = profile_box["mentor_id"]
-
-        for claim in (mentor_id, token_profile_id):
-            if claim:
-                claim_box = {"mentor_id": claim}
-                try:
-                    encode_document(claim_box, MENTOR_ID_PROPERTIES, [])
-                    if claim_box["mentor_id"] == expected_mentor_oid:
-                        return True
-                except ValueError:
-                    continue
-        return False
-
-    @classmethod
     def _require_mentee_visible(cls, document, token, profile_id):
         """Check outbound RBAC visibility for a mentee document using _id or profile_id."""
         if document is None:
@@ -107,16 +68,14 @@ class MenteeService(SharedMenteeService):
 
         caller_profile_id = token.get("profile_id")
         doc_profile_id = document.get("_id") or document.get("profile_id")
-        if caller_profile_id and doc_profile_id:
-            caller_box = {"_id": caller_profile_id}
-            doc_box = {"_id": doc_profile_id}
-            try:
-                encode_document(caller_box, ["_id"], [])
-                encode_document(doc_box, ["_id"], [])
-                if caller_box["_id"] == doc_box["_id"]:
-                    return document
-            except ValueError:
-                pass
+        if isinstance(doc_profile_id, dict) and "$oid" in doc_profile_id:
+            doc_profile_id = doc_profile_id["$oid"]
+        if (
+            caller_profile_id
+            and doc_profile_id
+            and str(caller_profile_id).lower() == str(doc_profile_id).lower()
+        ):
+            return document
 
         if cls._mentor_of_profile(doc_profile_id or profile_id, token):
             return document
