@@ -13,13 +13,16 @@ from api_utils.flask_utils.exceptions import (
     HTTPNotFound,
     HTTPInternalServerError,
 )
+from api_utils.mongo_utils import encode_document
 from api_utils.services import MenteeService as SharedMenteeService
+from api_utils.services.rbac import is_admin
 from bson import ObjectId
-from bson.errors import InvalidId
 
 logger = logging.getLogger(__name__)
 
 RESTRICTED_FIELDS = ["_id", "profile_id", "created", "saved"]
+MENTEE_ID_PROPERTIES = ["_id", "profile_id"]
+MENTOR_ID_PROPERTIES = ["mentor_id"]
 
 
 class MenteeService(SharedMenteeService):
@@ -35,14 +38,6 @@ class MenteeService(SharedMenteeService):
     def _collection_name(cls, config):
         """Resolve the Mentee collection name from shared config."""
         return config.MENTEE_COLLECTION_NAME
-
-    @classmethod
-    def _to_object_id(cls, value, label):
-        """Convert a string id to a BSON ObjectId."""
-        try:
-            return ObjectId(value)
-        except (InvalidId, TypeError):
-            raise HTTPBadRequest(f"Invalid {label}: {value}")
 
     @classmethod
     def _check_permission(cls, token, operation):
@@ -64,7 +59,7 @@ class MenteeService(SharedMenteeService):
 
     @classmethod
     def _mentor_of_profile(cls, profile_id, token):
-        """Return True when the caller is the mentor assigned to ``profile_id`` (case-insensitive)."""
+        """Return True when the caller is the mentor assigned to ``profile_id``."""
         mentor_id = token.get("mentor_id")
         token_profile_id = token.get("profile_id")
         if not mentor_id and not token_profile_id:
@@ -82,11 +77,22 @@ class MenteeService(SharedMenteeService):
         if not profile_mentor_id:
             return False
 
-        str_profile_mentor = str(profile_mentor_id).lower()
-        if mentor_id and str_profile_mentor == str(mentor_id).lower():
-            return True
-        if token_profile_id and str_profile_mentor == str(token_profile_id).lower():
-            return True
+        profile_box = {"mentor_id": profile_mentor_id}
+        try:
+            encode_document(profile_box, MENTOR_ID_PROPERTIES, [])
+        except ValueError:
+            return False
+        expected_mentor_oid = profile_box["mentor_id"]
+
+        for claim in (mentor_id, token_profile_id):
+            if claim:
+                claim_box = {"mentor_id": claim}
+                try:
+                    encode_document(claim_box, MENTOR_ID_PROPERTIES, [])
+                    if claim_box["mentor_id"] == expected_mentor_oid:
+                        return True
+                except ValueError:
+                    continue
         return False
 
     @classmethod
@@ -94,16 +100,23 @@ class MenteeService(SharedMenteeService):
         """Check outbound RBAC visibility for a mentee document using _id or profile_id."""
         if document is None:
             raise HTTPNotFound(f"Mentee for profile {profile_id} not found")
-        from api_utils.services.rbac import is_admin
         if is_admin(token):
             return document
         if cls._is_archived(document):
             raise HTTPNotFound(f"Mentee for profile {profile_id} not found")
 
         caller_profile_id = token.get("profile_id")
-        doc_profile_id = str(document.get("_id") or document.get("profile_id") or "")
-        if caller_profile_id and doc_profile_id.lower() == str(caller_profile_id).lower():
-            return document
+        doc_profile_id = document.get("_id") or document.get("profile_id")
+        if caller_profile_id and doc_profile_id:
+            caller_box = {"_id": caller_profile_id}
+            doc_box = {"_id": doc_profile_id}
+            try:
+                encode_document(caller_box, ["_id"], [])
+                encode_document(doc_box, ["_id"], [])
+                if caller_box["_id"] == doc_box["_id"]:
+                    return document
+            except ValueError:
+                pass
 
         if cls._mentor_of_profile(doc_profile_id or profile_id, token):
             return document
@@ -118,10 +131,10 @@ class MenteeService(SharedMenteeService):
                 raise HTTPForbidden(f"Cannot update {field} field")
 
     @classmethod
-    def _default_document(cls, profile_object_id, breadcrumb):
+    def _default_document(cls, profile_id, breadcrumb):
         """Build a schema-valid default Mentee document for a Profile."""
-        return {
-            "_id": profile_object_id,
+        doc = {
+            "_id": profile_id,
             "status": "active",
             "description": "",
             "focus": "",
@@ -130,6 +143,8 @@ class MenteeService(SharedMenteeService):
             "created": breadcrumb,
             "saved": breadcrumb,
         }
+        encode_document(doc, MENTEE_ID_PROPERTIES, [])
+        return doc
 
     @classmethod
     def get_mentee(cls, profile_id, token, breadcrumb):
@@ -142,26 +157,28 @@ class MenteeService(SharedMenteeService):
         """
         try:
             cls._check_permission(token, "read")
-            profile_object_id = cls._to_object_id(profile_id, "profile_id")
             mongo = MongoIO.get_instance()
             config = Config.get_instance()
             collection_name = cls._collection_name(config)
 
-            existing = mongo.get_documents(
-                collection_name,
-                match={
-                    "$or": [
-                        {"_id": profile_object_id},
-                        {"profile_id": profile_object_id},
-                    ]
-                },
-            )
+            match = {
+                "$or": [
+                    {"_id": profile_id},
+                    {"profile_id": profile_id},
+                ]
+            }
+            try:
+                encode_document(match, MENTEE_ID_PROPERTIES, [])
+            except ValueError:
+                raise HTTPBadRequest(f"Invalid profile_id: {profile_id}")
+
+            existing = mongo.get_documents(collection_name, match=match)
             if existing:
                 # Existing row: shared visibility (404 if hidden). Never create.
                 return cls._require_mentee_visible(existing[0], token, profile_id)
 
             cls._check_permission(token, "create")
-            document = cls._default_document(profile_object_id, breadcrumb)
+            document = cls._default_document(profile_id, breadcrumb)
             mentee_id = mongo.create_document(collection_name, document)
             created_doc = mongo.get_document(collection_name, mentee_id)
             logger.info(
@@ -182,7 +199,14 @@ class MenteeService(SharedMenteeService):
         try:
             cls._check_permission(token, "update")
             cls._validate_update_data(data)
-            mentee_object_id = cls._to_object_id(mentee_id, "mentee_id")
+            match_id = {"_id": mentee_id}
+            match_profile = {"profile_id": mentee_id}
+            try:
+                encode_document(match_id, MENTEE_ID_PROPERTIES, [])
+                encode_document(match_profile, MENTEE_ID_PROPERTIES, [])
+            except ValueError:
+                raise HTTPBadRequest(f"Invalid mentee_id: {mentee_id}")
+
             set_data = {k: v for k, v in data.items() if k not in RESTRICTED_FIELDS}
             set_data["saved"] = breadcrumb
             mongo = MongoIO.get_instance()
@@ -190,13 +214,13 @@ class MenteeService(SharedMenteeService):
             collection_name = cls._collection_name(config)
             updated = mongo.update_document(
                 collection_name,
-                match={"_id": mentee_object_id},
+                match=match_id,
                 set_data=set_data,
             )
             if updated is None:
                 updated = mongo.update_document(
                     collection_name,
-                    match={"profile_id": mentee_object_id},
+                    match=match_profile,
                     set_data=set_data,
                 )
             if updated is None:
