@@ -13,7 +13,7 @@ from api_utils.flask_utils.exceptions import (
 )
 
 PROFILE_ID = "507f1f77bcf86cd799439011"
-MENTEE_ID = "507f1f77bcf86cd7994390aa"
+MENTEE_ID = PROFILE_ID
 MENTOR_PROFILE_ID = "507f1f77bcf86cd799439099"
 
 
@@ -61,7 +61,6 @@ class TestMenteeService(unittest.TestCase):
 
         existing = {
             "_id": ObjectId(MENTEE_ID),
-            "profile_id": ObjectId(PROFILE_ID),
             "status": "active",
         }
         mock_mongo = MagicMock()
@@ -97,7 +96,6 @@ class TestMenteeService(unittest.TestCase):
 
         created_doc = {
             "_id": ObjectId(MENTEE_ID),
-            "profile_id": ObjectId(PROFILE_ID),
             "status": "active",
         }
         mock_mongo = MagicMock()
@@ -115,7 +113,8 @@ class TestMenteeService(unittest.TestCase):
         call_args = mock_mongo.create_document.call_args
         self.assertEqual(call_args[0][0], "Mentee")
         document = call_args[0][1]
-        self.assertEqual(document["profile_id"], ObjectId(PROFILE_ID))
+        self.assertEqual(document["_id"], ObjectId(PROFILE_ID))
+        self.assertNotIn("profile_id", document)
         self.assertEqual(document["status"], "active")
         self.assertEqual(document["created"], self.mock_breadcrumb)
         self.assertEqual(document["saved"], self.mock_breadcrumb)
@@ -137,7 +136,6 @@ class TestMenteeService(unittest.TestCase):
 
         created_doc = {
             "_id": ObjectId(MENTEE_ID),
-            "profile_id": ObjectId(PROFILE_ID),
             "status": "active",
         }
         mock_mongo = MagicMock()
@@ -151,6 +149,9 @@ class TestMenteeService(unittest.TestCase):
         )
 
         self.assertEqual(result, created_doc)
+        document = mock_mongo.create_document.call_args[0][1]
+        self.assertEqual(document["_id"], ObjectId(PROFILE_ID))
+        self.assertNotIn("profile_id", document)
 
     @patch("api_utils.config.config.Config.get_instance")
     @patch("api_utils.services.mentee_service.Config.get_instance")
@@ -177,7 +178,6 @@ class TestMenteeService(unittest.TestCase):
 
         existing = {
             "_id": ObjectId(MENTEE_ID),
-            "profile_id": ObjectId(PROFILE_ID),
             "status": "archived",
         }
         mock_mongo = MagicMock()
@@ -238,7 +238,6 @@ class TestMenteeService(unittest.TestCase):
 
         updated_doc = {
             "_id": ObjectId(MENTEE_ID),
-            "profile_id": ObjectId(PROFILE_ID),
             "notes": "Great progress",
         }
         mock_mongo = MagicMock()
@@ -325,6 +324,70 @@ class TestMenteeService(unittest.TestCase):
                 self.mock_mentor_token,
                 self.mock_breadcrumb,
             )
+
+    @patch("src.services.mentee_service.Config.get_instance")
+    @patch("src.services.mentee_service.MongoIO.get_instance")
+    def test_mentor_of_profile_case_insensitive(
+        self, mock_get_mongo, mock_get_config
+    ):
+        """_mentor_of_profile matches mentor_id case-insensitively (hex ObjectId vs token claim)."""
+        mock_config = MagicMock()
+        mock_config.PROFILE_COLLECTION_NAME = "Profile"
+        mock_get_config.return_value = mock_config
+
+        mock_mongo = MagicMock()
+        # MongoDB returns ObjectId whose str() is lowercase
+        mock_mongo.get_document.return_value = {
+            "_id": ObjectId("A00000000000000000000019"),
+            "mentor_id": ObjectId("A00000000000000000000010"),
+        }
+        mock_get_mongo.return_value = mock_mongo
+
+        # Token carries uppercase profile_id (like login.html / IDP)
+        token = {
+            "user_id": "paula",
+            "roles": ["mentor"],
+            "profile_id": "A00000000000000000000010",
+        }
+
+        self.assertTrue(
+            MenteeService._mentor_of_profile("a00000000000000000000019", token)
+        )
+
+    @patch("src.services.mentee_service.Config.get_instance")
+    @patch("src.services.mentee_service.MongoIO.get_instance")
+    def test_get_mentee_existing_case_insensitive_mentor(
+        self, mock_get_mongo, mock_get_config
+    ):
+        """get_mentee succeeds on reload when document exists and mentor ID has uppercase hex."""
+        mock_config = MagicMock()
+        mock_config.MENTEE_COLLECTION_NAME = "Mentee"
+        mock_config.PROFILE_COLLECTION_NAME = "Profile"
+        mock_config.ROLE_MENTOR = "mentor"
+        mock_config.ROLE_ADMIN = "admin"
+        mock_get_config.return_value = mock_config
+
+        pat_id = "a00000000000000000000019"
+        existing_mentee = {
+            "_id": ObjectId(pat_id),
+            "status": "active",
+        }
+        mock_mongo = MagicMock()
+        mock_mongo.get_documents.return_value = [existing_mentee]
+        mock_mongo.get_document.return_value = {
+            "_id": ObjectId(pat_id),
+            "mentor_id": ObjectId("A00000000000000000000010"),
+        }
+        mock_get_mongo.return_value = mock_mongo
+
+        token = {
+            "user_id": "paula",
+            "roles": ["mentor"],
+            "profile_id": "A00000000000000000000010",
+        }
+
+        result = MenteeService.get_mentee(pat_id, token, self.mock_breadcrumb)
+        self.assertEqual(result, existing_mentee)
 
 
 if __name__ == "__main__":

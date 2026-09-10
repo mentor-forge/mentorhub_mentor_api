@@ -389,8 +389,8 @@ class TestProfileService(unittest.TestCase):
 
         def fake_get_documents(collection_name, match=None, project=None, sort_by=None):
             if collection_name == "Journey":
-                self.assertEqual(match, {"profile_id": MENTEE_1_ID, "status": "active"})
-                self.assertIsInstance(match["profile_id"], ObjectId)
+                self.assertEqual(match, {"_id": MENTEE_1_ID, "status": "active"})
+                self.assertIsInstance(match["_id"], ObjectId)
                 return [
                     {
                         "status": "active",

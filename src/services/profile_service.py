@@ -214,7 +214,7 @@ class ProfileService(SharedProfileService):
         from src.services.journey_service import JourneyService
         from src.services.encounter_service import EncounterService
 
-        match = {"profile_id": profile_id, "status": "active"}
+        match = {"_id": profile_id, "status": "active"}
         encode_document(match, JOURNEY_ID_PROPERTIES, [])
         journeys = mongo.get_documents(
             config.JOURNEY_COLLECTION_NAME,
