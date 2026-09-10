@@ -38,8 +38,8 @@ def test_get_mentee_auto_create_and_idempotent():
     first = requests.get(f"{BASE_URL}/api/mentee/{PROFILE_ID}", headers=headers)
     assert first.status_code == 200, _err(first, 200)
     first_doc = first.json()
-    assert "_id" in first_doc, "Response missing '_id' key"
-    assert first_doc["profile_id"] == PROFILE_ID
+    assert first_doc["_id"] == PROFILE_ID
+    assert "profile_id" not in first_doc
     assert first_doc["status"] == "active"
     assert "created" in first_doc
     assert "saved" in first_doc
