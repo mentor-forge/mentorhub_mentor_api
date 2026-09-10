@@ -653,6 +653,43 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  /api/encounter/schedule:
+    post:
+      tags:
+        - Encounter
+      summary: Schedule recurring encounters between a mentor and mentee
+      description: |
+        Schedule recurring encounters (requires the `mentor` or `admin` role).
+        The `mentor_id`, `mentee_id`, `plan_id`, `start_date`, `time_of_day`, and `count`
+        fields are required. Generates `count` encounters in `scheduled` status with
+        appointment windows and auto-filled agenda from the referenced Plan.
+      operationId: scheduleEncounters
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScheduleEncounterInput'
+      responses:
+        '201':
+          description: Successfully scheduled encounters
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Encounter'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   /api/encounter/{EncounterId}:
     get:
       tags:
@@ -693,8 +730,10 @@ paths:
       description: |
         Update an Encounter document. The caller must be an `admin` **or** the
         mentor who owns the encounter (the caller's Profile `_id` equals the
-        encounter's `mentor_id`); other mentors receive `403`. Cannot update _id,
-        created, or saved fields.
+        encounter's `mentor_id`); other mentors receive `403`.
+        Updates are permitted only when encounter status is `active`.
+        Only `agenda` (checklist checked state), `transcript`, `summary`, and `tldr`
+        may be updated.
       operationId: updateEncounter
       security:
         - bearerAuth: []
@@ -720,6 +759,85 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Encounter'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/encounter/{EncounterId}/start:
+    post:
+      tags:
+        - Encounter
+      summary: Start an encounter
+      description: |
+        Start an encounter (requires the owning mentor or `admin`). Verifies the mentee's
+        sponsor customer has sufficient subscription balance, transitions status to `active`,
+        logs an encounter started event, and decrements the customer subscription balance.
+      operationId: startEncounter
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: EncounterId
+          in: path
+          required: true
+          description: The Encounter ID (MongoDB ObjectId)
+          schema:
+            type: string
+            pattern: '^[0-9a-fA-F]{24}$'
+            example: 507f1f77bcf86cd799439011
+      responses:
+        '200':
+          description: Encounter successfully started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Encounter'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/encounter/{EncounterId}/finish:
+    post:
+      tags:
+        - Encounter
+      summary: Finish an encounter
+      description: |
+        Finish an encounter (requires the owning mentor or `admin`). Transitions status
+        from `active` to `complete`.
+      operationId: finishEncounter
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: EncounterId
+          in: path
+          required: true
+          description: The Encounter ID (MongoDB ObjectId)
+          schema:
+            type: string
+            pattern: '^[0-9a-fA-F]{24}$'
+            example: 507f1f77bcf86cd799439011
+      responses:
+        '200':
+          description: Encounter successfully finished
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Encounter'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -1658,17 +1776,35 @@ components:
                 description: The checklist step
                 pattern: '^[^\t\n]{1,255}$'
                 example: Review last week's homework
-        date:
+        appointment:
+          type: object
+          description: The scheduled appointment window for this encounter
+          additionalProperties: false
+          properties:
+            from:
+              type: string
+              format: date-time
+              description: When the scheduled appointment starts
+            to:
+              type: string
+              format: date-time
+              description: When the scheduled appointment ends
+        mentor_name:
           type: string
-          format: date-time
-          description: When did the encounter occur
-          example: "2024-01-15T10:00:00Z"
+          description: Display name of the mentor looked up from Profile
+          example: Jane Mentor
+        mentee_name:
+          type: string
+          description: Display name of the mentee looked up from Profile
+          example: Bob Mentee
         status:
           type: string
           description: Status of the document
           enum:
             - active
             - archived
+            - complete
+            - scheduled
           example: active
         tldr:
           type: string
@@ -1713,16 +1849,14 @@ components:
           description: The Encounter Plan used for this encounter
           pattern: '^[0-9a-fA-F]{24}$'
           example: 507f1f77bcf86cd799439011
-        date:
-          type: string
-          format: date-time
-          description: When did the encounter occur
         status:
           type: string
           description: Status of the document
           enum:
             - active
             - archived
+            - complete
+            - scheduled
           example: active
         tldr:
           type: string
@@ -1737,22 +1871,68 @@ components:
           description: The meeting transcript
           maxLength: 4096
 
-    EncounterUpdate:
+    ScheduleEncounterInput:
       type: object
-      description: Fields to update in a Encounter document (cannot include _id, created, saved)
+      description: Input for scheduling recurring encounters.
+      required:
+        - mentor_id
+        - mentee_id
+        - plan_id
+        - start_date
+        - day_of_week
+        - time_of_day
+        - recurrence_days
+        - count
       properties:
         mentor_id:
           type: string
-          description: The _id of the Mentors Profile
+          description: The _id of the Mentor's Profile
           pattern: '^[0-9a-fA-F]{24}$'
+          example: 507f1f77bcf86cd799439011
         mentee_id:
           type: string
           description: The _id of the Mentee's Profile
           pattern: '^[0-9a-fA-F]{24}$'
+          example: 507f1f77bcf86cd799439011
         plan_id:
           type: string
-          description: The Encounter Plan used for this encounter
+          description: The Encounter Plan used for these encounters
           pattern: '^[0-9a-fA-F]{24}$'
+          example: 507f1f77bcf86cd799439011
+        start_date:
+          type: string
+          format: date
+          description: When the recurring schedule starts
+          example: "2024-02-01"
+        day_of_week:
+          type: integer
+          minimum: 0
+          maximum: 6
+          description: Day of week for recurring encounters (0 = Sunday, 6 = Saturday)
+          example: 1
+        time_of_day:
+          type: string
+          pattern: '^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$'
+          description: Meeting start time of day (24-hour HH:MM)
+          example: "14:00"
+        recurrence_days:
+          type: integer
+          minimum: 1
+          default: 7
+          description: Days between recurring encounters
+          example: 7
+        count:
+          type: integer
+          minimum: 1
+          maximum: 52
+          description: Number of encounters to schedule
+          example: 4
+
+    EncounterUpdate:
+      type: object
+      description: Fields to update in an Encounter document (only permitted when status is active)
+      additionalProperties: false
+      properties:
         agenda:
           type: array
           description: |
@@ -1770,16 +1950,6 @@ components:
                 description: The checklist step
                 pattern: '^[^\t\n]{1,255}$'
                 example: Review last week's homework
-        date:
-          type: string
-          format: date-time
-          description: When did the encounter occur
-        status:
-          type: string
-          description: Status of the document
-          enum:
-            - active
-            - archived
         tldr:
           type: string
           description: A one sentence summary of the encounter
