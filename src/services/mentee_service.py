@@ -19,7 +19,7 @@ from bson.errors import InvalidId
 
 logger = logging.getLogger(__name__)
 
-RESTRICTED_FIELDS = ["_id", "created", "saved"]
+RESTRICTED_FIELDS = ["_id", "profile_id", "created", "saved"]
 
 
 class MenteeService(SharedMenteeService):
@@ -63,6 +63,27 @@ class MenteeService(SharedMenteeService):
             super()._check_permission(token, operation)
 
     @classmethod
+    def _require_mentee_visible(cls, document, token, profile_id):
+        """Check outbound RBAC visibility for a mentee document using _id or profile_id."""
+        if document is None:
+            raise HTTPNotFound(f"Mentee for profile {profile_id} not found")
+        from api_utils.services.rbac import is_admin
+        if is_admin(token):
+            return document
+        if cls._is_archived(document):
+            raise HTTPNotFound(f"Mentee for profile {profile_id} not found")
+
+        caller_profile_id = token.get("profile_id")
+        doc_profile_id = str(document.get("_id") or document.get("profile_id") or "")
+        if caller_profile_id and doc_profile_id == str(caller_profile_id):
+            return document
+
+        if cls._mentor_of_profile(doc_profile_id or profile_id, token):
+            return document
+
+        raise HTTPNotFound(f"Mentee for profile {profile_id} not found")
+
+    @classmethod
     def _validate_update_data(cls, data):
         """Reject updates targeting system-managed fields."""
         for field in RESTRICTED_FIELDS:
@@ -74,7 +95,6 @@ class MenteeService(SharedMenteeService):
         """Build a schema-valid default Mentee document for a Profile."""
         return {
             "_id": profile_object_id,
-            "profile_id": profile_object_id,
             "status": "active",
             "description": "",
             "focus": "",

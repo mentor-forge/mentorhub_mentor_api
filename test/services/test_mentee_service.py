@@ -13,7 +13,7 @@ from api_utils.flask_utils.exceptions import (
 )
 
 PROFILE_ID = "507f1f77bcf86cd799439011"
-MENTEE_ID = "507f1f77bcf86cd7994390aa"
+MENTEE_ID = PROFILE_ID
 MENTOR_PROFILE_ID = "507f1f77bcf86cd799439099"
 
 
@@ -61,7 +61,6 @@ class TestMenteeService(unittest.TestCase):
 
         existing = {
             "_id": ObjectId(MENTEE_ID),
-            "profile_id": ObjectId(PROFILE_ID),
             "status": "active",
         }
         mock_mongo = MagicMock()
@@ -97,7 +96,6 @@ class TestMenteeService(unittest.TestCase):
 
         created_doc = {
             "_id": ObjectId(MENTEE_ID),
-            "profile_id": ObjectId(PROFILE_ID),
             "status": "active",
         }
         mock_mongo = MagicMock()
@@ -116,7 +114,7 @@ class TestMenteeService(unittest.TestCase):
         self.assertEqual(call_args[0][0], "Mentee")
         document = call_args[0][1]
         self.assertEqual(document["_id"], ObjectId(PROFILE_ID))
-        self.assertEqual(document["profile_id"], ObjectId(PROFILE_ID))
+        self.assertNotIn("profile_id", document)
         self.assertEqual(document["status"], "active")
         self.assertEqual(document["created"], self.mock_breadcrumb)
         self.assertEqual(document["saved"], self.mock_breadcrumb)
@@ -138,7 +136,6 @@ class TestMenteeService(unittest.TestCase):
 
         created_doc = {
             "_id": ObjectId(MENTEE_ID),
-            "profile_id": ObjectId(PROFILE_ID),
             "status": "active",
         }
         mock_mongo = MagicMock()
@@ -154,7 +151,7 @@ class TestMenteeService(unittest.TestCase):
         self.assertEqual(result, created_doc)
         document = mock_mongo.create_document.call_args[0][1]
         self.assertEqual(document["_id"], ObjectId(PROFILE_ID))
-        self.assertEqual(document["profile_id"], ObjectId(PROFILE_ID))
+        self.assertNotIn("profile_id", document)
 
     @patch("api_utils.config.config.Config.get_instance")
     @patch("api_utils.services.mentee_service.Config.get_instance")
@@ -181,7 +178,6 @@ class TestMenteeService(unittest.TestCase):
 
         existing = {
             "_id": ObjectId(MENTEE_ID),
-            "profile_id": ObjectId(PROFILE_ID),
             "status": "archived",
         }
         mock_mongo = MagicMock()
@@ -242,7 +238,6 @@ class TestMenteeService(unittest.TestCase):
 
         updated_doc = {
             "_id": ObjectId(MENTEE_ID),
-            "profile_id": ObjectId(PROFILE_ID),
             "notes": "Great progress",
         }
         mock_mongo = MagicMock()

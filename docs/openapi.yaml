@@ -2002,11 +2002,6 @@ components:
           description: Searchable name for this mentoring record
           pattern: '^[^\s]{1,40}$'
           example: my-Mentee
-        profile_id:
-          type: string
-          description: The _id of the related mentee Profile document
-          pattern: '^[0-9a-fA-F]{24}$'
-          example: 507f1f77bcf86cd799439011
         status:
           type: string
           description: Status of the document
@@ -2061,10 +2056,6 @@ components:
           type: string
           description: Searchable name for this mentoring record
           pattern: '^[^\s]{1,40}$'
-        profile_id:
-          type: string
-          description: The _id of the related mentee Profile document
-          pattern: '^[0-9a-fA-F]{24}$'
         status:
           type: string
           description: Status of the document
