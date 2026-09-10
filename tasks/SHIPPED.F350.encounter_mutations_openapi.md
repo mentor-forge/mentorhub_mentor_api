@@ -1,6 +1,6 @@
 # F350 – Update OpenAPI specification for Encounter mutations
 
-**Status:** Pending  
+**Status:** Shipped  
 **Type:** Feature  
 **Depends On:** none  
 **Description:** Update `docs/openapi.yaml` to specify the external HTTP contract for Encounter mutations outlined in issue #28. Align the `Encounter` component schema with the MongoDB schema (`status` enum `[active, archived, complete, scheduled]`, `appointment` object with `from`/`to`, remove deprecated `date`, add `mentor_name` and `mentee_name` string lookups). Add `ScheduleEncounterInput` schema and `POST /api/encounter/schedule`. Add `POST /api/encounter/{EncounterId}/start` and `POST /api/encounter/{EncounterId}/finish`. Restrict `PATCH /api/encounter/{EncounterId}` description and `EncounterUpdate` schema to allowed fields (`agenda`, `transcript`, `summary`, `tldr`) and document that PATCH is allowed only when status is `active`.
@@ -125,3 +125,14 @@ Run all commands from this API repository root:
 The agent must not update files outside this list.
 
 ## Execution Notes
+
+1. Updated `docs/openapi.yaml`:
+   - `Encounter` component schema aligned: removed `date`, added `appointment` object schema (`from`/`to`), added `mentor_name` and `mentee_name` string fields, and updated `status` enum to `["active", "archived", "complete", "scheduled"]`.
+   - Added `ScheduleEncounterInput` component schema with required fields: `mentor_id`, `mentee_id`, `plan_id`, `start_date`, `day_of_week`, `time_of_day`, `recurrence_days`, `count`.
+   - Restricted `EncounterUpdate` component schema to `agenda`, `transcript`, `summary`, and `tldr` only with `additionalProperties: false`.
+   - Added `POST /api/encounter/schedule` endpoint with 201 response returning array of `Encounter`.
+   - Added `POST /api/encounter/{EncounterId}/start` endpoint with 200 response returning updated `Encounter`.
+   - Added `POST /api/encounter/{EncounterId}/finish` endpoint with 200 response returning updated `Encounter`.
+   - Updated `PATCH /api/encounter/{EncounterId}` description to note active status requirement and restricted field updates.
+2. Verified YAML syntax with python3 (`yaml.safe_load`).
+3. Ran `pipenv run test` (159 passed) and `pipenv run lint` (clean).

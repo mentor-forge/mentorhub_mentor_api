@@ -1,6 +1,6 @@
 # F351 – Encounter name enrichment for mentor and mentee
 
-**Status:** Pending  
+**Status:** Shipped  
 **Type:** Feature  
 **Depends On:** `F350_encounter_mutations_openapi`  
 **Description:** Implement `mentor_name` and `mentee_name` lookup enrichment on Encounter documents in `src/services/encounter_service.py`. When returning encounter documents from any endpoint (by-id, list for mentee, create, or update), resolve `mentor_name` from the mentor's Profile `display_name` using `mentor_id`, and `mentee_name` from the mentee's Profile `display_name` using `mentee_id`.
@@ -81,3 +81,13 @@ Run all commands from this API repository root:
 The agent must not update files outside this list.
 
 ## Execution Notes
+
+1. Implemented `_enrich_encounter` and `_enrich_encounters` helpers in `src/services/encounter_service.py`:
+   - Looks up mentor's and mentee's Profile documents in `config.PROFILE_COLLECTION_NAME` via `MongoIO.get_document`.
+   - Sets `encounter["mentor_name"] = mentor.get("display_name") if mentor else None`.
+   - Sets `encounter["mentee_name"] = mentee.get("display_name") if mentee else None`.
+   - Caches lookups in `_enrich_encounters` to avoid duplicate queries for batch lists.
+2. Overrode `get_encounter`, `get_encounters_for_mentee`, and `get_recent_encounter` to wrap superclass methods and enrich returned encounters.
+3. Updated `update_encounter` to enrich returned document before return.
+4. Added comprehensive unit tests in `test/services/test_encounter_service.py` verifying single document enrichment, missing profile fallback, batch list caching, and superclass delegation.
+5. Formatted and verified with `pipenv run test` (163 passed) and `pipenv run lint` (clean).

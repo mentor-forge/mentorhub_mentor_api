@@ -103,13 +103,25 @@ class EncounterService(SharedEncounterService):
         encounter = super().get_recent_encounter(mentee_id, token, breadcrumb)
         return cls._enrich_encounter(encounter)
 
+    ALLOWED_UPDATE_FIELDS = {"agenda", "transcript", "summary", "tldr"}
+
     @classmethod
     def _validate_update_data(cls, data):
-        """Reject updates targeting system-managed fields."""
-        restricted_fields = ["_id", "created", "saved"]
-        for field in restricted_fields:
-            if field in data:
+        """Allow only agenda, transcript, summary, and tldr updates."""
+        if not data:
+            return
+        for field in data:
+            if field not in cls.ALLOWED_UPDATE_FIELDS:
                 raise HTTPForbidden(f"Cannot update {field} field")
+        if "agenda" in data:
+            agenda = data["agenda"]
+            if not isinstance(agenda, list):
+                raise HTTPForbidden("Field 'agenda' must be a list")
+            for item in agenda:
+                if not isinstance(item, dict) or "checked" not in item:
+                    raise HTTPForbidden(
+                        "Each item in 'agenda' must be an object with 'checked'"
+                    )
 
     @classmethod
     def _build_agenda_from_plan(cls, plan):
@@ -188,9 +200,12 @@ class EncounterService(SharedEncounterService):
             cls._check_permission_write(
                 token, "update", breadcrumb, encounter=encounter
             )
+            if encounter.get("status") != "active":
+                raise HTTPForbidden(
+                    f"Cannot update encounter: status must be 'active', got '{encounter.get('status')}'"
+                )
             cls._validate_update_data(data)
-            restricted_fields = ["_id", "created", "saved"]
-            set_data = {k: v for k, v in data.items() if k not in restricted_fields}
+            set_data = {k: v for k, v in data.items() if k in cls.ALLOWED_UPDATE_FIELDS}
             set_data["saved"] = breadcrumb
             updated = mongo.update_document(
                 config.ENCOUNTER_COLLECTION_NAME,

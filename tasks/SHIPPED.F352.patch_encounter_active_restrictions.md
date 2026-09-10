@@ -1,6 +1,6 @@
 # F352 – Enforce PATCH encounter active status and allowed fields restrictions
 
-**Status:** Pending  
+**Status:** Shipped  
 **Type:** Feature  
 **Depends On:** `F351_encounter_name_enrichment`  
 **Description:** Restrict `PATCH /api/encounter/<id>` guardrails: allow updates only when encounter `status == "active"` and restrict updatable fields strictly to `agenda` (`agenda.checked`), `transcript`, `summary`, and `tldr`. Reject updates with `HTTPForbidden` if status is not `active` (e.g. `scheduled`, `complete`, `archived`) or if any disallowed field is present in the update payload.
@@ -76,3 +76,10 @@ Run all commands from this API repository root:
 The agent must not update files outside this list.
 
 ## Execution Notes
+
+1. Defined `ALLOWED_UPDATE_FIELDS = {"agenda", "transcript", "summary", "tldr"}` in `src/services/encounter_service.py`.
+2. Updated `_validate_update_data` to forbid any fields outside `ALLOWED_UPDATE_FIELDS` with `HTTPForbidden`, and validated that `agenda` items are dictionaries containing `checked`.
+3. In `update_encounter`, enforced that `encounter.get("status") == "active"`, raising `HTTPForbidden` otherwise.
+4. Only allow allowed fields to be passed into `MongoIO.update_document` along with `saved: breadcrumb`.
+5. Updated unit tests in `test/services/test_encounter_service.py` and route tests in `test/routes/test_encounter_routes.py` to assert active status checks, allowed fields validation, and error responses.
+6. Verified with `pipenv run format`, `pipenv run test` (165 passed), and `pipenv run lint`.

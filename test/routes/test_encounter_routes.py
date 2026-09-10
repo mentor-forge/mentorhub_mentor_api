@@ -183,19 +183,19 @@ class TestEncounterRoutes(unittest.TestCase):
 
         mock_update_encounter.return_value = {
             "_id": "123",
-            "name": "updated-encounter",
+            "summary": "updated-encounter",
         }
 
         response = self.client.patch(
             "/api/encounter/123",
-            json={"name": "updated-encounter"},
+            json={"summary": "updated-encounter"},
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json["name"], "updated-encounter")
+        self.assertEqual(response.json["summary"], "updated-encounter")
         mock_update_encounter.assert_called_once_with(
             "123",
-            {"name": "updated-encounter"},
+            {"summary": "updated-encounter"},
             self.mock_token,
             self.mock_breadcrumb,
         )
@@ -221,7 +221,7 @@ class TestEncounterRoutes(unittest.TestCase):
 
         response = self.client.patch(
             "/api/encounter/123",
-            json={"name": "updated-encounter"},
+            json={"summary": "updated-encounter"},
         )
 
         self.assertEqual(response.status_code, 403)
@@ -246,7 +246,7 @@ class TestEncounterRoutes(unittest.TestCase):
 
         response = self.client.patch(
             "/api/encounter/999",
-            json={"name": "updated-encounter"},
+            json={"summary": "updated-encounter"},
         )
 
         self.assertEqual(response.status_code, 404)

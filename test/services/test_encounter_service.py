@@ -188,7 +188,7 @@ class TestEncounterService(unittest.TestCase):
     def test_update_encounter_allowed_for_owning_mentor(
         self, mock_get_mongo, mock_get_config, mock_get_profile
     ):
-        """Owning mentor may update their encounter."""
+        """Owning mentor may update their active encounter with allowed fields."""
         mock_config = _make_config()
         mock_get_config.return_value = mock_config
 
@@ -198,27 +198,29 @@ class TestEncounterService(unittest.TestCase):
         mock_mongo.get_document.return_value = {
             "_id": "enc-123",
             "mentor_id": ObjectId(self.VALID_MENTOR_ID),
+            "status": "active",
         }
         mock_mongo.update_document.return_value = {
             "_id": "enc-123",
-            "notes": "Updated",
+            "summary": "Updated summary",
+            "status": "active",
         }
         mock_get_mongo.return_value = mock_mongo
 
         updated = EncounterService.update_encounter(
             "enc-123",
-            {"notes": "Updated"},
+            {"summary": "Updated summary"},
             self.mock_mentor_token,
             self.mock_breadcrumb,
         )
 
         self.assertIsNotNone(updated)
-        self.assertEqual(updated["notes"], "Updated")
+        self.assertEqual(updated["summary"], "Updated summary")
 
     @patch("src.services.encounter_service.Config.get_instance")
     @patch("src.services.encounter_service.MongoIO.get_instance")
     def test_update_encounter_allowed_for_admin(self, mock_get_mongo, mock_get_config):
-        """Admin may update any encounter."""
+        """Admin may update any active encounter with allowed fields."""
         mock_config = _make_config()
         mock_get_config.return_value = mock_config
 
@@ -226,21 +228,24 @@ class TestEncounterService(unittest.TestCase):
         mock_mongo.get_document.return_value = {
             "_id": "enc-123",
             "mentor_id": ObjectId(self.VALID_MENTOR_ID),
+            "status": "active",
         }
         mock_mongo.update_document.return_value = {
             "_id": "enc-123",
-            "notes": "Updated",
+            "summary": "Updated summary",
+            "status": "active",
         }
         mock_get_mongo.return_value = mock_mongo
 
         updated = EncounterService.update_encounter(
             "enc-123",
-            {"notes": "Updated"},
+            {"summary": "Updated summary"},
             self.mock_admin_token,
             self.mock_breadcrumb,
         )
 
         self.assertIsNotNone(updated)
+        self.assertEqual(updated["summary"], "Updated summary")
 
     @patch("src.services.profile_service.ProfileService.get_profile_by_token")
     @patch("src.services.encounter_service.Config.get_instance")
@@ -258,13 +263,14 @@ class TestEncounterService(unittest.TestCase):
         mock_mongo.get_document.return_value = {
             "_id": "enc-123",
             "mentor_id": ObjectId(self.VALID_MENTOR_ID),
+            "status": "active",
         }
         mock_get_mongo.return_value = mock_mongo
 
         with self.assertRaises(HTTPForbidden):
             EncounterService.update_encounter(
                 "enc-123",
-                {"notes": "Updated"},
+                {"summary": "Updated summary"},
                 self.mock_other_mentor_token,
                 self.mock_breadcrumb,
             )
@@ -278,7 +284,7 @@ class TestEncounterService(unittest.TestCase):
         with self.assertRaises(HTTPForbidden):
             EncounterService.update_encounter(
                 "enc-123",
-                {"notes": "Updated"},
+                {"summary": "Updated summary"},
                 self.mock_user_token,
                 self.mock_breadcrumb,
             )
@@ -297,7 +303,7 @@ class TestEncounterService(unittest.TestCase):
         with self.assertRaises(HTTPNotFound):
             EncounterService.update_encounter(
                 "enc-missing",
-                {"notes": "Updated"},
+                {"summary": "Updated summary"},
                 self.mock_admin_token,
                 self.mock_breadcrumb,
             )
@@ -307,7 +313,7 @@ class TestEncounterService(unittest.TestCase):
     def test_update_encounter_prevent_restricted_fields(
         self, mock_get_mongo, mock_get_config
     ):
-        """Restricted fields on update raise HTTPForbidden."""
+        """Disallowed fields on update raise HTTPForbidden."""
         mock_config = _make_config()
         mock_get_config.return_value = mock_config
 
@@ -315,16 +321,95 @@ class TestEncounterService(unittest.TestCase):
         mock_mongo.get_document.return_value = {
             "_id": "enc-123",
             "mentor_id": ObjectId(self.VALID_MENTOR_ID),
+            "status": "active",
         }
         mock_get_mongo.return_value = mock_mongo
 
-        with self.assertRaises(HTTPForbidden):
-            EncounterService.update_encounter(
-                "enc-123",
-                {"_id": "new-id"},
-                self.mock_admin_token,
-                self.mock_breadcrumb,
-            )
+        for field in [
+            "_id",
+            "created",
+            "saved",
+            "status",
+            "mentor_id",
+            "mentee_id",
+            "plan_id",
+            "appointment",
+            "notes",
+        ]:
+            with self.assertRaises(HTTPForbidden):
+                EncounterService.update_encounter(
+                    "enc-123",
+                    {field: "disallowed"},
+                    self.mock_admin_token,
+                    self.mock_breadcrumb,
+                )
+
+    @patch("src.services.encounter_service.Config.get_instance")
+    @patch("src.services.encounter_service.MongoIO.get_instance")
+    def test_update_encounter_forbidden_when_not_active(
+        self, mock_get_mongo, mock_get_config
+    ):
+        """Updating encounter when status is not active raises HTTPForbidden."""
+        mock_config = _make_config()
+        mock_get_config.return_value = mock_config
+
+        mock_mongo = MagicMock()
+        for inactive_status in ["scheduled", "complete", "archived"]:
+            mock_mongo.get_document.return_value = {
+                "_id": "enc-123",
+                "mentor_id": ObjectId(self.VALID_MENTOR_ID),
+                "status": inactive_status,
+            }
+            mock_get_mongo.return_value = mock_mongo
+
+            with self.assertRaises(HTTPForbidden):
+                EncounterService.update_encounter(
+                    "enc-123",
+                    {"summary": "Updated summary"},
+                    self.mock_admin_token,
+                    self.mock_breadcrumb,
+                )
+
+    @patch("src.services.encounter_service.Config.get_instance")
+    @patch("src.services.encounter_service.MongoIO.get_instance")
+    def test_update_encounter_allowed_fields_and_agenda(
+        self, mock_get_mongo, mock_get_config
+    ):
+        """Updating agenda, transcript, summary, and tldr succeeds."""
+        mock_config = _make_config()
+        mock_get_config.return_value = mock_config
+
+        mock_mongo = MagicMock()
+        mock_mongo.get_document.return_value = {
+            "_id": "enc-123",
+            "mentor_id": ObjectId(self.VALID_MENTOR_ID),
+            "status": "active",
+        }
+        mock_mongo.update_document.return_value = {
+            "_id": "enc-123",
+            "status": "active",
+            "summary": "Summary",
+            "tldr": "TLDR",
+            "transcript": "Meeting text",
+            "agenda": [{"step": "Step 1", "checked": True}],
+        }
+        mock_get_mongo.return_value = mock_mongo
+
+        update_payload = {
+            "summary": "Summary",
+            "tldr": "TLDR",
+            "transcript": "Meeting text",
+            "agenda": [{"step": "Step 1", "checked": True}],
+        }
+        result = EncounterService.update_encounter(
+            "enc-123",
+            update_payload,
+            self.mock_admin_token,
+            self.mock_breadcrumb,
+        )
+        self.assertIsNotNone(result)
+        self.assertEqual(result["summary"], "Summary")
+        self.assertEqual(result["agenda"][0]["checked"], True)
 
     @patch("src.services.encounter_service.Config.get_instance")
     @patch("src.services.encounter_service.MongoIO.get_instance")
