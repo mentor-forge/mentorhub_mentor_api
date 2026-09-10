@@ -82,11 +82,16 @@ class MenteeService(SharedMenteeService):
 
         raise HTTPNotFound(f"Mentee for profile {profile_id} not found")
 
+    ALLOWED_UPDATE_FIELDS = {"summary", "notes", "status"}
+
     @classmethod
     def _validate_update_data(cls, data):
-        """Reject updates targeting system-managed fields."""
+        """Reject updates targeting system-managed or disallowed fields."""
         for field in RESTRICTED_FIELDS:
             if field in data:
+                raise HTTPForbidden(f"Cannot update {field} field")
+        for field in data:
+            if field not in cls.ALLOWED_UPDATE_FIELDS:
                 raise HTTPForbidden(f"Cannot update {field} field")
 
     @classmethod
@@ -95,9 +100,7 @@ class MenteeService(SharedMenteeService):
         doc = {
             "_id": profile_id,
             "status": "active",
-            "description": "",
-            "focus": "",
-            "homework": "",
+            "summary": "",
             "notes": "",
             "created": breadcrumb,
             "saved": breadcrumb,

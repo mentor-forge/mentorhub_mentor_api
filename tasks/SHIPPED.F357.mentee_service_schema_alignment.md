@@ -1,6 +1,6 @@
 # F357 – Update MenteeService implementation and unit tests for simplified schema
 
-**Status:** Pending  
+**Status:** Shipped  
 **Type:** Feature  
 **Depends On:** `F356_mentee_openapi_schema`  
 **Description:** Update `MenteeService._default_document` in `src/services/mentee_service.py` to produce schema-compliant default documents containing `summary` and `notes` without legacy fields (`description`, `focus`, `homework`). Update `test/services/test_mentee_service.py` to validate the new document shape and test updates with `summary`.
@@ -93,4 +93,12 @@ Run all commands from this API repository root:
 The agent must not update files outside this list.
 
 ## Execution Notes
+
+- Updated `MenteeService._default_document` to initialize `_id`, `status: "active"`, `summary: ""`, `notes: ""`, `created`, and `saved`, removing legacy fields `description`, `focus`, and `homework`.
+- Updated `MenteeService._validate_update_data` to restrict updates strictly to `ALLOWED_UPDATE_FIELDS = {"summary", "notes", "status"}` and reject any legacy/disallowed fields with `HTTPForbidden`.
+- Updated `test/services/test_mentee_service.py`:
+  - Verified default document assertions for mentor and admin create-if-missing paths.
+  - Verified rejection of restricted and legacy fields (`_id`, `profile_id`, `created`, `saved`, `focus`, `homework`, `description`, `schedule`, `next_appointment`, `name`).
+  - Verified successful update of `summary` and `notes`.
+- All 190 unit tests passed and linting was clean.
 

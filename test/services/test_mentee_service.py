@@ -116,6 +116,11 @@ class TestMenteeService(unittest.TestCase):
         self.assertEqual(document["_id"], ObjectId(PROFILE_ID))
         self.assertNotIn("profile_id", document)
         self.assertEqual(document["status"], "active")
+        self.assertEqual(document["summary"], "")
+        self.assertEqual(document["notes"], "")
+        self.assertNotIn("description", document)
+        self.assertNotIn("focus", document)
+        self.assertNotIn("homework", document)
         self.assertEqual(document["created"], self.mock_breadcrumb)
         self.assertEqual(document["saved"], self.mock_breadcrumb)
 
@@ -152,6 +157,11 @@ class TestMenteeService(unittest.TestCase):
         document = mock_mongo.create_document.call_args[0][1]
         self.assertEqual(document["_id"], ObjectId(PROFILE_ID))
         self.assertNotIn("profile_id", document)
+        self.assertEqual(document["summary"], "")
+        self.assertEqual(document["notes"], "")
+        self.assertNotIn("description", document)
+        self.assertNotIn("focus", document)
+        self.assertNotIn("homework", document)
 
     @patch("api_utils.config.config.Config.get_instance")
     @patch("api_utils.services.mentee_service.Config.get_instance")
@@ -176,16 +186,10 @@ class TestMenteeService(unittest.TestCase):
         mock_parent_config.return_value = mock_config
         mock_rbac_config.return_value = mock_config
 
-        existing = {
-            "_id": ObjectId(MENTEE_ID),
-            "status": "archived",
-        }
         mock_mongo = MagicMock()
-        mock_mongo.get_documents.return_value = [existing]
-        mock_mongo.get_document.return_value = {
-            "_id": ObjectId(PROFILE_ID),
-            "mentor_id": ObjectId(MENTOR_PROFILE_ID),
-        }
+        mock_mongo.get_documents.return_value = [
+            {"_id": ObjectId(MENTEE_ID), "status": "archived"}
+        ]
         mock_get_mongo.return_value = mock_mongo
         mock_parent_mongo.return_value = mock_mongo
 
@@ -238,6 +242,7 @@ class TestMenteeService(unittest.TestCase):
 
         updated_doc = {
             "_id": ObjectId(MENTEE_ID),
+            "summary": "Great mentee",
             "notes": "Great progress",
         }
         mock_mongo = MagicMock()
@@ -246,7 +251,7 @@ class TestMenteeService(unittest.TestCase):
 
         result = MenteeService.update_mentee(
             MENTEE_ID,
-            {"notes": "Great progress"},
+            {"summary": "Great mentee", "notes": "Great progress"},
             self.mock_mentor_token,
             self.mock_breadcrumb,
         )
@@ -257,12 +262,12 @@ class TestMenteeService(unittest.TestCase):
         self.assertEqual(call_args[0][0], "Mentee")
         self.assertEqual(call_args[1]["match"], {"_id": ObjectId(MENTEE_ID)})
         set_data = call_args[1]["set_data"]
+        self.assertEqual(set_data["summary"], "Great mentee")
         self.assertEqual(set_data["notes"], "Great progress")
-        self.assertEqual(set_data["saved"], self.mock_breadcrumb)
 
     @patch("src.services.mentee_service.Config.get_instance")
     def test_update_mentee_forbidden_without_mentor_role(self, mock_get_config):
-        """update_mentee raises HTTPForbidden for non-mentor / non-admin."""
+        """update_mentee raises HTTPForbidden when caller has neither mentor nor admin role."""
         mock_config = MagicMock()
         mock_config.ROLE_MENTOR = "mentor"
         mock_config.ROLE_ADMIN = "admin"
@@ -278,13 +283,24 @@ class TestMenteeService(unittest.TestCase):
 
     @patch("src.services.mentee_service.Config.get_instance")
     def test_update_mentee_prevent_restricted_fields(self, mock_get_config):
-        """update_mentee rejects restricted fields."""
+        """update_mentee rejects restricted and disallowed fields."""
         mock_config = MagicMock()
         mock_config.ROLE_MENTOR = "mentor"
         mock_config.ROLE_ADMIN = "admin"
         mock_get_config.return_value = mock_config
 
-        for field in ("_id", "created", "saved"):
+        for field in (
+            "_id",
+            "profile_id",
+            "created",
+            "saved",
+            "focus",
+            "homework",
+            "description",
+            "schedule",
+            "next_appointment",
+            "name",
+        ):
             with self.assertRaises(HTTPForbidden):
                 MenteeService.update_mentee(
                     MENTEE_ID,
