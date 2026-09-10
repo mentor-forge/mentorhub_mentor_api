@@ -73,6 +73,7 @@ class MenteeService(SharedMenteeService):
     def _default_document(cls, profile_object_id, breadcrumb):
         """Build a schema-valid default Mentee document for a Profile."""
         return {
+            "_id": profile_object_id,
             "profile_id": profile_object_id,
             "status": "active",
             "description": "",
@@ -100,7 +101,13 @@ class MenteeService(SharedMenteeService):
             collection_name = cls._collection_name(config)
 
             existing = mongo.get_documents(
-                collection_name, match={"profile_id": profile_object_id}
+                collection_name,
+                match={
+                    "$or": [
+                        {"_id": profile_object_id},
+                        {"profile_id": profile_object_id},
+                    ]
+                },
             )
             if existing:
                 # Existing row: shared visibility (404 if hidden). Never create.
@@ -139,6 +146,12 @@ class MenteeService(SharedMenteeService):
                 match={"_id": mentee_object_id},
                 set_data=set_data,
             )
+            if updated is None:
+                updated = mongo.update_document(
+                    collection_name,
+                    match={"profile_id": mentee_object_id},
+                    set_data=set_data,
+                )
             if updated is None:
                 raise HTTPNotFound(f"Mentee {mentee_id} not found")
             logger.info(f"Updated mentee {mentee_id} for user {token.get('user_id')}")

@@ -115,6 +115,7 @@ class TestMenteeService(unittest.TestCase):
         call_args = mock_mongo.create_document.call_args
         self.assertEqual(call_args[0][0], "Mentee")
         document = call_args[0][1]
+        self.assertEqual(document["_id"], ObjectId(PROFILE_ID))
         self.assertEqual(document["profile_id"], ObjectId(PROFILE_ID))
         self.assertEqual(document["status"], "active")
         self.assertEqual(document["created"], self.mock_breadcrumb)
@@ -151,6 +152,9 @@ class TestMenteeService(unittest.TestCase):
         )
 
         self.assertEqual(result, created_doc)
+        document = mock_mongo.create_document.call_args[0][1]
+        self.assertEqual(document["_id"], ObjectId(PROFILE_ID))
+        self.assertEqual(document["profile_id"], ObjectId(PROFILE_ID))
 
     @patch("api_utils.config.config.Config.get_instance")
     @patch("api_utils.services.mentee_service.Config.get_instance")
