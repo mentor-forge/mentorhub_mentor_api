@@ -60,4 +60,38 @@ def create_encounter_routes():
         )
         return jsonify(updated_encounter), 200
 
+    @bp.route("/schedule", methods=["POST"])
+    @handle_route_exceptions
+    def schedule_encounters():
+        token = create_flask_token()
+        breadcrumb = create_flask_breadcrumb(token)
+        data = request.get_json() or {}
+        encounters = EncounterService.schedule_encounters(data, token, breadcrumb)
+        logger.info(
+            f"schedule_encounters Success {str(breadcrumb['at_time'])}, {breadcrumb['correlation_id']}"
+        )
+        return jsonify(encounters), 201
+
+    @bp.route("/<encounter_id>/start", methods=["POST"])
+    @handle_route_exceptions
+    def start_encounter(encounter_id):
+        token = create_flask_token()
+        breadcrumb = create_flask_breadcrumb(token)
+        encounter = EncounterService.start_encounter(encounter_id, token, breadcrumb)
+        logger.info(
+            f"start_encounter Success {str(breadcrumb['at_time'])}, {breadcrumb['correlation_id']}"
+        )
+        return jsonify(encounter), 200
+
+    @bp.route("/<encounter_id>/finish", methods=["POST"])
+    @handle_route_exceptions
+    def finish_encounter(encounter_id):
+        token = create_flask_token()
+        breadcrumb = create_flask_breadcrumb(token)
+        encounter = EncounterService.finish_encounter(encounter_id, token, breadcrumb)
+        logger.info(
+            f"finish_encounter Success {str(breadcrumb['at_time'])}, {breadcrumb['correlation_id']}"
+        )
+        return jsonify(encounter), 200
+
     return bp

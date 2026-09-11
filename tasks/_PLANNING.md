@@ -2,13 +2,17 @@
 
 This folder contains coding tasks that an orchestration agent can execute, based on the context and instructions in each task file. This file is a guide for an agent that is helping to plan changes by creating task files to achieve a goal. Create tasks following the [naming conventions](#naming-conventions) and guides below. When planning, only create tasks, do not execute any tasks, and do not change any files outside of the tasks folder. 
 
-- **Path anchoring**
+## Task File complexity
+Tasks should be detailed enough to allow less expensive AI agents to understand and execute them, while still being manageable for the orchestrating agent.
+
+## **Path anchoring**
   - All paths in task files are relative to **this API repository root** (the directory that contains `Pipfile`).
   - Sibling repos must all be sibling folders under a common parent.
   - Standards: `../mentorhub/DeveloperEdition/standards/api_standards.md`
   - In-repo: `README.md`, `docs/openapi.yaml`, `src/...`, `test/...`, `tasks/...`
 
-- **Context** Before creating any task files you should review the following files for context:
+## **Context** 
+Before creating any task files you should review the following files for context:
 - ../mentorhub/DeveloperEdition/standards/ArchitecturePrinciples.md
 - ../mentorhub/DeveloperEdition/standards/api_standards.md
 - ../mentorhub_api_utils/README.md
