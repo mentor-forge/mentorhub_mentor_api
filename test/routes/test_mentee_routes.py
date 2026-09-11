@@ -75,20 +75,22 @@ class TestMenteeRoutes(unittest.TestCase):
 
         mock_update_mentee.return_value = {
             "_id": MENTEE_ID,
-            "focus": "async patterns",
+            "summary": "Mentoring summary",
+            "notes": "Mentoring notes",
         }
 
         response = self.client.patch(
             f"/api/mentee/{MENTEE_ID}",
-            json={"focus": "async patterns"},
+            json={"summary": "Mentoring summary", "notes": "Mentoring notes"},
         )
 
         self.assertEqual(response.status_code, 200)
         data = response.json
-        self.assertEqual(data["focus"], "async patterns")
+        self.assertEqual(data["summary"], "Mentoring summary")
+        self.assertEqual(data["notes"], "Mentoring notes")
         mock_update_mentee.assert_called_once_with(
             MENTEE_ID,
-            {"focus": "async patterns"},
+            {"summary": "Mentoring summary", "notes": "Mentoring notes"},
             self.mock_token,
             self.mock_breadcrumb,
         )

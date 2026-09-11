@@ -41,6 +41,11 @@ def test_get_mentee_auto_create_and_idempotent():
     assert first_doc["_id"] == PROFILE_ID
     assert "profile_id" not in first_doc
     assert first_doc["status"] == "active"
+    assert first_doc.get("summary") == ""
+    assert first_doc.get("notes") == ""
+    assert "focus" not in first_doc
+    assert "homework" not in first_doc
+    assert "description" not in first_doc
     assert "created" in first_doc
     assert "saved" in first_doc
 
@@ -60,20 +65,51 @@ def test_patch_mentee_round_trip():
     assert created.status_code == 200, _err(created, 200)
     mentee_id = created.json()["_id"]
 
-    payload = {"focus": "E2E focus area", "notes": "E2E mentor notes"}
+    payload = {"summary": "E2E relationship summary", "notes": "E2E mentor notes"}
     patched = requests.patch(
         f"{BASE_URL}/api/mentee/{mentee_id}", headers=headers, json=payload
     )
     assert patched.status_code == 200, _err(patched, 200)
     patched_doc = patched.json()
-    assert patched_doc["focus"] == "E2E focus area"
+    assert patched_doc["summary"] == "E2E relationship summary"
     assert patched_doc["notes"] == "E2E mentor notes"
+    assert "focus" not in patched_doc
     assert "saved" in patched_doc
 
     # Re-read via the profile to confirm the update persisted.
     reread = requests.get(f"{BASE_URL}/api/mentee/{PROFILE_ID}", headers=headers)
     assert reread.status_code == 200, _err(reread, 200)
-    assert reread.json()["focus"] == "E2E focus area"
+    assert reread.json()["summary"] == "E2E relationship summary"
+    assert reread.json()["notes"] == "E2E mentor notes"
+    assert "focus" not in reread.json()
+
+
+@pytest.mark.e2e
+def test_patch_mentee_disallowed_fields_rejected_e2e():
+    """PATCH rejects legacy or restricted fields with 403."""
+    token = get_auth_token()
+    headers = {"Authorization": f"Bearer {token}"}
+
+    created = requests.get(f"{BASE_URL}/api/mentee/{PROFILE_ID}", headers=headers)
+    assert created.status_code == 200, _err(created, 200)
+    mentee_id = created.json()["_id"]
+
+    for field in [
+        "focus",
+        "homework",
+        "description",
+        "schedule",
+        "next_appointment",
+        "_id",
+        "created",
+        "saved",
+    ]:
+        bad_patch = requests.patch(
+            f"{BASE_URL}/api/mentee/{mentee_id}",
+            headers=headers,
+            json={field: "disallowed"},
+        )
+        assert bad_patch.status_code == 403, _err(bad_patch, 403)
 
 
 @pytest.mark.e2e
@@ -85,7 +121,7 @@ def test_mentee_endpoints_require_auth():
     ), f"Expected 401, got {get_response.status_code}"
 
     patch_response = requests.patch(
-        f"{BASE_URL}/api/mentee/{PROFILE_ID}", json={"focus": "nope"}
+        f"{BASE_URL}/api/mentee/{PROFILE_ID}", json={"summary": "nope"}
     )
     assert (
         patch_response.status_code == 401
