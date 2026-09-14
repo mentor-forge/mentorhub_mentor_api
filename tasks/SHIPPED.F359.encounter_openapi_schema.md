@@ -1,6 +1,6 @@
 # F359 – Update Encounter schema in OpenAPI specification
 
-**Status:** Pending  
+**Status:** Shipped  
 **Type:** Feature  
 **Depends On:** none  
 **Description:** Update the `Encounter` schema and response examples in `docs/openapi.yaml` to align with the updated Encounter dictionary from the schema server: add `actual` (`appointment` object with `from` and `to` date-time properties) and `no_show` (`boolean`), align `agenda` step pattern to `^[^\t\n]{0,255}$`, and update endpoint response examples.
@@ -108,4 +108,12 @@ The agent must not update files outside this list.
 
 ## Execution Notes
 
-<!-- Reserved for task execution agent to record plan, commands run, test results, and follow-ups. -->
+1. Updated `Encounter` component schema in `docs/openapi.yaml`:
+   - Added `actual` object property with `from` and `to` date-time format properties and `additionalProperties: false`.
+   - Added `no_show` boolean property.
+   - Updated `agenda.items.properties.step.pattern` and `EncounterUpdate.agenda.items.properties.step.pattern` to `'^[^\t\n]{0,255}$'`.
+   - Preserved `additionalProperties: false` and required fields `_id`, `created`, `saved`.
+2. Validated YAML structure and parsed cleanly with YAML loader.
+3. Verified `pipenv run lint` (clean, 50 files unchanged) and `pipenv run build`.
+4. Verified contract boundary test `pytest test/e2e/test_boundaries.py::test_live_openapi_matches_list_and_aggregation_contracts` (PASSED 100%).
+5. Verified unit test suite `pipenv run test` (190 passed).
