@@ -1,6 +1,6 @@
 # F361 – Update Encounter E2E tests for new test data and mutation actual datetimes
 
-**Status:** Pending  
+**Status:** Shipped  
 **Type:** Feature  
 **Depends On:** `F360_encounter_start_finish_actual_datetimes`  
 **Description:** Update E2E integration tests in `test/e2e/test_encounter.py` to verify start/finish mutation `actual` timestamps and validate the expanded Encounter seed test data (including `actual` appointment windows, `no_show` flags, and Obsidian transcripts/summaries). Run full test suite and mandatory Pre-PR QA Gate.
@@ -20,8 +20,8 @@ Always read these files before implementation:
 - `../mentorhub/DeveloperEdition/standards/api_standards.md`
 - `tasks/_PLANNING.md`
 - `tasks/_ORCHESTRATE.md`
-- `tasks/PENDING.F359.encounter_openapi_schema.md`
-- `tasks/PENDING.F360.encounter_start_finish_actual_datetimes.md`
+- `tasks/SHIPPED.F359.encounter_openapi_schema.md`
+- `tasks/SHIPPED.F360.encounter_start_finish_actual_datetimes.md`
 - `docs/openapi.yaml`
 - `src/services/encounter_service.py`
 - `test/e2e/test_encounter.py`
@@ -86,4 +86,15 @@ The agent must not update files outside this list.
 
 ## Execution Notes
 
-<!-- Reserved for task execution agent to record plan, commands run, test results, and follow-ups. -->
+1. Updated `test/e2e/test_encounter.py`:
+   - Enhanced `test_encounter_full_lifecycle_start_patch_finish_e2e`: verified `actual.from` on start, `actual.to` on finish, and persistence via GET.
+   - Enhanced `test_patch_encounter_disallowed_fields_rejected_e2e`: asserted `actual` and `no_show` reject PATCH with 403 Forbidden.
+   - Added `test_seeded_encounter_completed_with_actual_and_transcripts_e2e`: validated seeded completed encounter with actual appointment window, Obsidian summaries/transcripts, display names, and `no_show=False`.
+   - Added `test_seeded_encounter_no_show_e2e`: validated seeded no-show encounter with `no_show=True`.
+   - Added `test_seeded_encounter_scheduled_appointment_e2e`: validated seeded scheduled appointment window and absence of `actual`.
+2. Verified test suites:
+   - `pipenv run test`: 190 passed (100%).
+   - `pipenv run lint`: Clean, 50 files unchanged.
+   - `pipenv run build`: Clean compilation.
+   - `pipenv run pytest test/e2e/test_encounter.py`: 17 passed (100%).
+   - `pipenv run e2e`: 51 passed, 2 skipped, 0 failed (100%).
