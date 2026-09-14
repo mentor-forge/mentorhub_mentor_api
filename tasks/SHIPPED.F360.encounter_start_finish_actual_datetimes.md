@@ -1,6 +1,6 @@
 # F360 – Populate started and completed date-time in start and finish encounter mutations
 
-**Status:** Pending  
+**Status:** Shipped  
 **Type:** Feature  
 **Depends On:** `F359_encounter_openapi_schema`  
 **Description:** Update `start_encounter` and `finish_encounter` in `EncounterService` to populate the `actual` datetime fields. Starting an encounter populates `actual.from` with the current UTC datetime (or breadcrumb `at_time`). Finishing an encounter populates `actual.to` with the current UTC datetime while preserving `actual.from`. Update unit tests in `test/services/test_encounter_service.py` to verify that `actual` fields are persisted and returned in enriched documents.
@@ -97,4 +97,17 @@ The agent must not update files outside this list.
 
 ## Execution Notes
 
-<!-- Reserved for task execution agent to record plan, commands run, test results, and follow-ups. -->
+1. Updated `src/services/encounter_service.py`:
+   - In `start_encounter`: populated `actual.from` with `breadcrumb.get("at_time") or datetime.now(timezone.utc)` and persisted via `MongoIO.update_document` in `set_data`.
+   - In `finish_encounter`: populated `actual.to` with `breadcrumb.get("at_time") or datetime.now(timezone.utc)` while preserving existing `actual.from`, persisted via `MongoIO.update_document` in `set_data`.
+   - Enforced PATCH guardrail keeping `ALLOWED_UPDATE_FIELDS` restricted to `{"agenda", "transcript", "summary", "tldr"}`.
+2. Updated `test/services/test_encounter_service.py`:
+   - Updated `test_start_encounter_success` to verify `actual.from` is updated and returned in enriched output.
+   - Updated `test_finish_encounter_success` to verify `actual.to` is updated and existing `actual.from` is preserved.
+   - Updated `test_update_encounter_prevent_restricted_fields` to verify `actual` and `no_show` raise `HTTPForbidden`.
+3. Validated unit tests:
+   - `pipenv run format`: Clean.
+   - `pipenv run lint`: Clean, 50 files unchanged.
+   - `pipenv run build`: Clean compilation.
+   - `pipenv run pytest test/services/test_encounter_service.py`: 34 passed (100%).
+   - `pipenv run test`: 190 passed (100%).
