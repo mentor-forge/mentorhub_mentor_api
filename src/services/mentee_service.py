@@ -34,11 +34,6 @@ class MenteeService(SharedMenteeService):
     """
 
     @classmethod
-    def _collection_name(cls, config):
-        """Resolve the Mentee collection name from shared config."""
-        return config.MENTEE_COLLECTION_NAME
-
-    @classmethod
     def _check_permission(cls, token, operation):
         """
         Inbound RBAC check: create/update requires mentor or admin.
@@ -119,10 +114,6 @@ class MenteeService(SharedMenteeService):
         """
         try:
             cls._check_permission(token, "read")
-            mongo = MongoIO.get_instance()
-            config = Config.get_instance()
-            collection_name = cls._collection_name(config)
-
             match = {
                 "$or": [
                     {"_id": profile_id},
@@ -133,6 +124,10 @@ class MenteeService(SharedMenteeService):
                 encode_document(match, MENTEE_ID_PROPERTIES, [])
             except ValueError:
                 raise HTTPBadRequest(f"Invalid profile_id: {profile_id}")
+
+            mongo = MongoIO.get_instance()
+            config = Config.get_instance()
+            collection_name = config.MENTEE_COLLECTION_NAME
 
             existing = mongo.get_documents(collection_name, match=match)
             if existing:
@@ -173,7 +168,7 @@ class MenteeService(SharedMenteeService):
             set_data["saved"] = breadcrumb
             mongo = MongoIO.get_instance()
             config = Config.get_instance()
-            collection_name = cls._collection_name(config)
+            collection_name = config.MENTEE_COLLECTION_NAME
             updated = mongo.update_document(
                 collection_name,
                 match=match_id,
