@@ -223,7 +223,9 @@ class TestMenteeService(unittest.TestCase):
                 PROFILE_ID, self.mock_user_token, self.mock_breadcrumb
             )
 
-    def test_get_mentee_invalid_profile_id(self):
+    @patch("src.services.mentee_service.Config.get_instance")
+    @patch("src.services.mentee_service.MongoIO.get_instance")
+    def test_get_mentee_invalid_profile_id(self, mock_get_mongo, mock_get_config):
         """Invalid profile_id raises HTTPBadRequest."""
         with self.assertRaises(HTTPBadRequest):
             MenteeService.get_mentee(
