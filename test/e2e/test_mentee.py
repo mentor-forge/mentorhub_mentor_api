@@ -83,6 +83,14 @@ def test_patch_mentee_round_trip():
     assert reread.json()["notes"] == "E2E mentor notes"
     assert "focus" not in reread.json()
 
+    # Reset back to empty strings to keep test suite idempotent across repeated runs
+    reset_resp = requests.patch(
+        f"{BASE_URL}/api/mentee/{mentee_id}",
+        headers=headers,
+        json={"summary": "", "notes": ""},
+    )
+    assert reset_resp.status_code == 200, _err(reset_resp, 200)
+
 
 @pytest.mark.e2e
 def test_patch_mentee_disallowed_fields_rejected_e2e():

@@ -339,6 +339,8 @@ class TestEncounterService(unittest.TestCase):
             "mentee_id",
             "plan_id",
             "appointment",
+            "actual",
+            "no_show",
             "notes",
         ]:
             with self.assertRaises(HTTPForbidden):
@@ -844,11 +846,13 @@ class TestEncounterService(unittest.TestCase):
             return None
 
         mock_mongo.get_document.side_effect = mock_get_doc
+        expected_actual = {"from": self.mock_breadcrumb["at_time"]}
         mock_mongo.update_document.return_value = {
             "_id": "enc-1",
             "mentor_id": self.VALID_MENTOR_ID,
             "mentee_id": self.VALID_MENTEE_ID,
             "status": "active",
+            "actual": expected_actual,
         }
         mock_get_mongo.return_value = mock_mongo
 
@@ -858,6 +862,7 @@ class TestEncounterService(unittest.TestCase):
 
         self.assertIsNotNone(result)
         self.assertEqual(result["status"], "active")
+        self.assertEqual(result["actual"], expected_actual)
         self.assertEqual(result["mentor_name"], "Jane Mentor")
         self.assertEqual(result["mentee_name"], "Bob Mentee")
 
@@ -869,11 +874,15 @@ class TestEncounterService(unittest.TestCase):
             set_data={"subscriptions": [cust_sub], "saved": self.mock_breadcrumb},
         )
 
-        # Verify encounter status updated to active
+        # Verify encounter status and actual.from updated
         mock_mongo.update_document.assert_any_call(
             "Encounter",
             document_id="enc-1",
-            set_data={"status": "active", "saved": self.mock_breadcrumb},
+            set_data={
+                "status": "active",
+                "actual": expected_actual,
+                "saved": self.mock_breadcrumb,
+            },
         )
 
         # Verify event logged
@@ -1025,6 +1034,8 @@ class TestEncounterService(unittest.TestCase):
         mock_get_config.return_value = mock_config
         mock_get_profile.return_value = {"_id": self.VALID_MENTOR_ID}
 
+        start_time = datetime(2026, 7, 19, 2, 2, tzinfo=timezone.utc)
+        expected_actual = {"from": start_time, "to": self.mock_breadcrumb["at_time"]}
         mock_mongo = MagicMock()
         mock_mongo.get_document.side_effect = lambda coll, doc_id: {
             ("Encounter", "enc-1"): {
@@ -1032,6 +1043,7 @@ class TestEncounterService(unittest.TestCase):
                 "mentor_id": self.VALID_MENTOR_ID,
                 "mentee_id": self.VALID_MENTEE_ID,
                 "status": "active",
+                "actual": {"from": start_time},
             },
             ("Profile", self.VALID_MENTOR_ID): {
                 "_id": self.VALID_MENTOR_ID,
@@ -1048,6 +1060,7 @@ class TestEncounterService(unittest.TestCase):
             "mentor_id": self.VALID_MENTOR_ID,
             "mentee_id": self.VALID_MENTEE_ID,
             "status": "complete",
+            "actual": expected_actual,
         }
         mock_get_mongo.return_value = mock_mongo
 
@@ -1057,13 +1070,18 @@ class TestEncounterService(unittest.TestCase):
 
         self.assertIsNotNone(result)
         self.assertEqual(result["status"], "complete")
+        self.assertEqual(result["actual"], expected_actual)
         self.assertEqual(result["mentor_name"], "Jane Mentor")
         self.assertEqual(result["mentee_name"], "Bob Mentee")
 
         mock_mongo.update_document.assert_called_once_with(
             "Encounter",
             document_id="enc-1",
-            set_data={"status": "complete", "saved": self.mock_breadcrumb},
+            set_data={
+                "status": "complete",
+                "actual": expected_actual,
+                "saved": self.mock_breadcrumb,
+            },
         )
 
     @patch("src.services.profile_service.ProfileService.get_profile_by_token")
