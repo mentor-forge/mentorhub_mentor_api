@@ -132,16 +132,39 @@ class MenteeService(SharedMenteeService):
             existing = mongo.get_documents(collection_name, match=match)
             if existing:
                 # Existing row: shared visibility (404 if hidden). Never create.
-                return cls._require_mentee_visible(existing[0], token, profile_id)
+                result = cls._require_mentee_visible(existing[0], token, profile_id)
+            else:
+                cls._check_permission(token, "create")
+                document = cls._default_document(profile_id, breadcrumb)
+                mentee_id = mongo.create_document(collection_name, document)
+                result = mongo.get_document(collection_name, mentee_id)
+                logger.info(
+                    f"Created default mentee for profile {profile_id} by {token.get('user_id')}"
+                )
 
-            cls._check_permission(token, "create")
-            document = cls._default_document(profile_id, breadcrumb)
-            mentee_id = mongo.create_document(collection_name, document)
-            created_doc = mongo.get_document(collection_name, mentee_id)
-            logger.info(
-                f"Created default mentee for profile {profile_id} by {token.get('user_id')}"
-            )
-            return created_doc
+            profile_id_str = str(profile_id)
+            try:
+                from src.services.journey_service import JourneyService
+
+                plan_counts = JourneyService.get_journey_progress(
+                    profile_id_str, token, breadcrumb
+                )
+                result["plan_counts"] = {
+                    "library": plan_counts.get("library", 0),
+                    "now": plan_counts.get("now", 0),
+                    "next": plan_counts.get("next", 0),
+                }
+            except Exception as e:
+                logger.warning(
+                    f"Failed to get journey progress for profile {profile_id}: {str(e)}"
+                )
+                result["plan_counts"] = {
+                    "library": 0,
+                    "now": 0,
+                    "next": 0,
+                }
+
+            return result
         except (HTTPBadRequest, HTTPForbidden, HTTPNotFound):
             raise
         except Exception as e:

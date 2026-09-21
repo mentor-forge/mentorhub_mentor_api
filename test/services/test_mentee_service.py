@@ -405,6 +405,87 @@ class TestMenteeService(unittest.TestCase):
         result = MenteeService.get_mentee(pat_id, token, self.mock_breadcrumb)
         self.assertEqual(result, existing_mentee)
 
+    @patch("src.services.journey_service.JourneyService.get_journey_progress")
+    @patch("src.services.mentee_service.Config.get_instance")
+    @patch("src.services.mentee_service.MongoIO.get_instance")
+    def test_get_mentee_enriches_plan_counts(
+        self, mock_get_mongo, mock_get_config, mock_get_journey_progress
+    ):
+        """get_mentee appends plan_counts from JourneyService."""
+        mock_config = MagicMock()
+        mock_config.MENTEE_COLLECTION_NAME = "Mentee"
+        mock_config.PROFILE_COLLECTION_NAME = "Profile"
+        mock_config.ROLE_MENTOR = "mentor"
+        mock_config.ROLE_ADMIN = "admin"
+        mock_get_config.return_value = mock_config
+
+        existing = {
+            "_id": ObjectId(MENTEE_ID),
+            "status": "active",
+        }
+        mock_mongo = MagicMock()
+        mock_mongo.get_documents.return_value = [existing]
+        mock_mongo.get_document.return_value = {
+            "_id": ObjectId(PROFILE_ID),
+            "mentor_id": ObjectId(MENTOR_PROFILE_ID),
+        }
+        mock_get_mongo.return_value = mock_mongo
+
+        mock_get_journey_progress.return_value = {
+            "library": 5,
+            "now": 1,
+            "next": 10,
+        }
+
+        result = MenteeService.get_mentee(
+            PROFILE_ID, self.mock_mentor_token, self.mock_breadcrumb
+        )
+
+        mock_get_journey_progress.assert_called_once_with(
+            PROFILE_ID, self.mock_mentor_token, self.mock_breadcrumb
+        )
+        self.assertEqual(
+            result.get("plan_counts"),
+            {"library": 5, "now": 1, "next": 10},
+        )
+
+    @patch("src.services.journey_service.JourneyService.get_journey_progress")
+    @patch("src.services.mentee_service.Config.get_instance")
+    @patch("src.services.mentee_service.MongoIO.get_instance")
+    def test_get_mentee_plan_counts_error_fallback(
+        self, mock_get_mongo, mock_get_config, mock_get_journey_progress
+    ):
+        """get_mentee falls back to zero counts if get_journey_progress raises an exception."""
+        mock_config = MagicMock()
+        mock_config.MENTEE_COLLECTION_NAME = "Mentee"
+        mock_config.PROFILE_COLLECTION_NAME = "Profile"
+        mock_config.ROLE_MENTOR = "mentor"
+        mock_config.ROLE_ADMIN = "admin"
+        mock_get_config.return_value = mock_config
+
+        existing = {
+            "_id": ObjectId(MENTEE_ID),
+            "status": "active",
+        }
+        mock_mongo = MagicMock()
+        mock_mongo.get_documents.return_value = [existing]
+        mock_mongo.get_document.return_value = {
+            "_id": ObjectId(PROFILE_ID),
+            "mentor_id": ObjectId(MENTOR_PROFILE_ID),
+        }
+        mock_get_mongo.return_value = mock_mongo
+
+        mock_get_journey_progress.side_effect = Exception("Journey retrieval error")
+
+        result = MenteeService.get_mentee(
+            PROFILE_ID, self.mock_mentor_token, self.mock_breadcrumb
+        )
+
+        self.assertEqual(
+            result.get("plan_counts"),
+            {"library": 0, "now": 0, "next": 0},
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1093,6 +1093,25 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Mentee'
+              example:
+                _id: 507f1f77bcf86cd799439011
+                status: active
+                summary: Short summary of the mentoring relationship
+                notes: Mentor notes about this mentee (shared across mentors over time)
+                plan_counts:
+                  library: 15
+                  now: 2
+                  next: 30
+                created:
+                  from_ip: 192.168.1.1
+                  at_time: "2024-01-15T10:00:00Z"
+                  by_user: user-123
+                  correlation_id: corr-abc123
+                saved:
+                  from_ip: 192.168.1.1
+                  at_time: "2024-01-15T10:00:00Z"
+                  by_user: user-123
+                  correlation_id: corr-abc123
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -2199,6 +2218,23 @@ components:
           type: string
           description: Mentor notes about this mentee (shared across mentors over time)
           maxLength: 4096
+        plan_counts:
+          type: object
+          description: "Count of journey resources in each bucket for this mentee"
+          properties:
+            library:
+              type: integer
+              description: "Number of completed (library) resources"
+              example: 15
+            now:
+              type: integer
+              description: "Number of in-progress (now) resources"
+              example: 2
+            next:
+              type: integer
+              description: "Number of queued (next) resources"
+              example: 30
+          required: [library, now, next]
         created:
           $ref: '#/components/schemas/Breadcrumb'
         saved:
