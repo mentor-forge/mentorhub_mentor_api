@@ -449,10 +449,14 @@ class EncounterService(SharedEncounterService):
                 encounter.get("mentee_id"), mongo, config, breadcrumb
             )
 
+            started_at = breadcrumb.get("at_time") or datetime.now(timezone.utc)
+            actual = dict(encounter.get("actual") or {})
+            actual["from"] = started_at
+
             updated = mongo.update_document(
                 config.ENCOUNTER_COLLECTION_NAME,
                 document_id=encounter_id,
-                set_data={"status": "active", "saved": breadcrumb},
+                set_data={"status": "active", "actual": actual, "saved": breadcrumb},
             )
             if updated is None:
                 raise HTTPNotFound(f"Encounter {encounter_id} not found")
@@ -505,10 +509,14 @@ class EncounterService(SharedEncounterService):
                     f"Cannot finish encounter: status is '{current_status}', expected 'active'"
                 )
 
+            completed_at = breadcrumb.get("at_time") or datetime.now(timezone.utc)
+            actual = dict(encounter.get("actual") or {})
+            actual["to"] = completed_at
+
             updated = mongo.update_document(
                 config.ENCOUNTER_COLLECTION_NAME,
                 document_id=encounter_id,
-                set_data={"status": "complete", "saved": breadcrumb},
+                set_data={"status": "complete", "actual": actual, "saved": breadcrumb},
             )
             if updated is None:
                 raise HTTPNotFound(f"Encounter {encounter_id} not found")

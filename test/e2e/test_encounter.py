@@ -379,6 +379,8 @@ def test_encounter_full_lifecycle_start_patch_finish_e2e():
     assert start_resp.status_code == 200, _err(start_resp, 200)
     started = start_resp.json()
     assert started["status"] == "active"
+    assert started.get("actual") is not None
+    assert "from" in started["actual"]
     assert started.get("mentor_name") is not None
     assert started.get("mentee_name") is not None
 
@@ -415,8 +417,19 @@ def test_encounter_full_lifecycle_start_patch_finish_e2e():
     assert finish_resp.status_code == 200, _err(finish_resp, 200)
     finished = finish_resp.json()
     assert finished["status"] == "complete"
+    assert finished.get("actual") is not None
+    assert "from" in finished["actual"]
+    assert "to" in finished["actual"]
     assert finished.get("mentor_name") is not None
     assert finished.get("mentee_name") is not None
+
+    # Verify persisted via GET
+    get_resp = requests.get(f"{BASE_URL}/api/encounter/{encounter_id}", headers=headers)
+    assert get_resp.status_code == 200, _err(get_resp, 200)
+    persisted = get_resp.json()
+    assert persisted.get("actual") is not None
+    assert "from" in persisted["actual"]
+    assert "to" in persisted["actual"]
 
     # 7. Cannot PATCH after complete
     patch_late = requests.patch(
@@ -486,7 +499,16 @@ def test_patch_encounter_disallowed_fields_rejected_e2e():
     encounter = _create_encounter(headers)
     encounter_id = encounter["_id"]
 
-    for field in ["status", "mentor_id", "mentee_id", "plan_id", "appointment", "_id"]:
+    for field in [
+        "status",
+        "mentor_id",
+        "mentee_id",
+        "plan_id",
+        "appointment",
+        "actual",
+        "no_show",
+        "_id",
+    ]:
         bad_patch = requests.patch(
             f"{BASE_URL}/api/encounter/{encounter_id}",
             headers=headers,
@@ -606,3 +628,59 @@ def test_encounter_name_enrichment_get_endpoints_e2e():
     assert len(matched) == 1
     assert matched[0]["mentor_name"] is not None
     assert matched[0]["mentee_name"] is not None
+
+
+@pytest.mark.e2e
+def test_seeded_encounter_completed_with_actual_and_transcripts_e2e():
+    """GET /api/encounter/<id> on seeded completed encounter returns actual window, transcripts, summaries, and no_show=False."""
+    token = get_auth_token()
+    headers = {"Authorization": f"Bearer {token}"}
+    encounter_id = "e00000000000000000000001"
+    response = requests.get(f"{BASE_URL}/api/encounter/{encounter_id}", headers=headers)
+    assert response.status_code == 200, _err(response, 200)
+    encounter = response.json()
+    assert encounter["_id"].lower() == encounter_id.lower()
+    assert encounter["status"] == "complete"
+    assert "actual" in encounter and isinstance(encounter["actual"], dict)
+    assert "from" in encounter["actual"] and "to" in encounter["actual"]
+    assert "appointment" in encounter and isinstance(encounter["appointment"], dict)
+    assert "from" in encounter["appointment"] and "to" in encounter["appointment"]
+    assert encounter.get("no_show") is False
+    assert encounter.get("summary") is not None and len(encounter["summary"]) > 0
+    assert encounter.get("tldr") is not None and len(encounter["tldr"]) > 0
+    assert encounter.get("transcript") is not None and len(encounter["transcript"]) > 0
+    assert encounter.get("mentor_name") is not None
+    assert encounter.get("mentee_name") is not None
+
+
+@pytest.mark.e2e
+def test_seeded_encounter_no_show_e2e():
+    """GET /api/encounter/<id> on seeded no-show encounter returns no_show=True."""
+    token = get_auth_token()
+    headers = {"Authorization": f"Bearer {token}"}
+    encounter_id = "e00000000000000000000007"
+    response = requests.get(f"{BASE_URL}/api/encounter/{encounter_id}", headers=headers)
+    assert response.status_code == 200, _err(response, 200)
+    encounter = response.json()
+    assert encounter["_id"].lower() == encounter_id.lower()
+    assert encounter["status"] == "complete"
+    assert encounter.get("no_show") is True
+    assert encounter.get("mentor_name") is not None
+    assert encounter.get("mentee_name") is not None
+
+
+@pytest.mark.e2e
+def test_seeded_encounter_scheduled_appointment_e2e():
+    """GET /api/encounter/<id> on seeded scheduled encounter has appointment window and no actual window."""
+    token = get_auth_token()
+    headers = {"Authorization": f"Bearer {token}"}
+    encounter_id = "e00000000000000000000009"
+    response = requests.get(f"{BASE_URL}/api/encounter/{encounter_id}", headers=headers)
+    assert response.status_code == 200, _err(response, 200)
+    encounter = response.json()
+    assert encounter["_id"].lower() == encounter_id.lower()
+    assert encounter["status"] == "scheduled"
+    assert "appointment" in encounter and isinstance(encounter["appointment"], dict)
+    assert "from" in encounter["appointment"] and "to" in encounter["appointment"]
+    assert encounter.get("actual") is None
+    assert encounter.get("no_show") in (None, False)
