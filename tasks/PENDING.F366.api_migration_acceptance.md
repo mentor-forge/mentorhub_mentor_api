@@ -31,7 +31,7 @@ Source issue is authoritative for this migration. The agreed migration supersede
 ## Goals
 
 - Update active README and only dependency instructions in tasks/_PLANNING.md to match pipenv run install, exact wheel URL/lock policy and AWS-free Docker/CI. Record external upstream pin readiness and rollback.
-- Verify JWT issuer/audience/signature and service endpoints are configurable for the approved non-AWS environment; preserve existing API behavior. If inventory found no runtime AWS calls, record that evidence rather than implement unnecessary provider-specific code.
+- Verify existing JWT issuer/audience/signature and service endpoints work with local provider-neutral configuration; preserve API behavior without selecting or integrating a production provider. If inventory found no runtime AWS calls, record that evidence rather than implement unnecessary provider-specific code.
 - Record complete clean-install, test, Docker and CI acceptance; tests must use the selected library version and current display_name/tenant claims. Only this repo is modified. Do not execute other pending features or change issue/project state.
 
 ### Craftsmanship Expectations
@@ -42,7 +42,7 @@ Keep package, auth and deployment ownership in the existing shared modules. Pres
 
 These checks are for future execution; none were run while creating this plan.
 
-- pipenv run install, pipenv run test, pipenv run lint, pipenv run build and pipenv run container && pipenv run api && pipenv run e2e. Verify least-privileged/invalid tokens still fail and positive flows work without AWS. Runtime cutover depends on approved I-WE01 identity/hosting readiness; record it explicitly if not available.
+- pipenv run install, pipenv run test, pipenv run lint, pipenv run build and pipenv run container && pipenv run api && pipenv run e2e. Verify least-privileged/invalid tokens still fail and positive flows work without AWS. Local acceptance must not wait for a production provider decision; document any newly discovered actual coupling for a narrowly scoped follow-on instead of introducing an adapter here.
 
 ## Outputs
 
@@ -56,11 +56,21 @@ Only these implementation files may change. The orchestrator may also update/ren
 
 This is a reviewable plan, not an execution record. Execute only this task's listed outputs when orchestration is separately authorized. Do not touch excluded MongoDB/Runbook utility repos, publish packages/tags, mutate issue/project state, or delete/provision AWS resources as a side effect. Future workflow publication happens only through the reviewed maintainer release path.
 
-Where a task requires an unpublished release, an undecided production contract, unavailable live schema or operator evidence, stop execution at that prerequisite and report it; do not guess values or substitute the unrelated PyPI api-utils package. Pending status describes the plan's review state, not proof that external execution gates are satisfied.
+Where a task requires an unpublished release, unavailable live schema or operator evidence, stop execution at that prerequisite and report it; do not guess values or substitute the unrelated PyPI api-utils package. Pending status describes the plan's review state, not proof that external execution gates are satisfied.
 
 ## External prerequisites
 
-API utils release and verified wheel URL/hash: https://github.com/mentor-forge/mentorhub_api_utils/issues/36. Production identity/hosting decisions and cutover readiness: https://github.com/mentor-forge/mentorhub/issues/80. These are execution gates, not local task dependencies. No excluded utility-repo changes are authorized.
+API utils release and verified wheel URL/hash: https://github.com/mentor-forge/mentorhub_api_utils/issues/36. Cloud-agnostic local configuration and integration boundary: https://github.com/mentor-forge/mentorhub/issues/80. No production identity/hosting decision blocks this package/build work. These are execution gates, not local task dependencies. No excluded utility-repo changes are authorized.
+
+## Cloud-agnostic deployment boundary
+
+The deliverable is a cloud-agnostic **local** deployment plus the agreed GitHub dependency/build migration. Existing identity/hosting implementations are largely placeholders: audit actual executable dependencies before proposing changes. Selecting, implementing or migrating to a production IdP/hosting provider is not a prerequisite for library releases, journey package/build/CI changes or local acceptance.
+
+Keep application-facing backing-service contracts and environment settings provider neutral. Concentrate necessary integration changes in Admin API and DeveloperEdition/docker-compose.yaml where inspection proves coupling; preserve the existing shared JWT/redirect contracts and local persona/mocked-service behavior. Do not create per-journey provider adapters, new identity schemas or a general multi-cloud framework speculatively.
+
+Cloud-specific provisioning, backing-service configuration, identity-provider wiring, roles/secrets and deployment overlays belong to the relevant infrastructure repo: mentorhub_cloudformation owns AWS, including future CodeArtifact provisioning. Future separate repos may implement Google, Microsoft/Azure, IBM or Red Hat platforms against the same contracts; do not create or implement them in this effort. Core compose must not require AWS accounts, credentials or endpoints. A locally optional emulator is not a live AWS dependency; retain it only if useful without making it a required cloud-specific integration.
+
+AWS inventory, secure backup/restore evidence and separately approved decommissioning remain I-S01 responsibilities. Production provider selection or a live production cutover is future infrastructure/integration work, not an acceptance gate for the cloud-agnostic local stack.
 
 ## Execution Notes
 
