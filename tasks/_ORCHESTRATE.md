@@ -6,7 +6,7 @@ This folder contains coding tasks that an orchestration agent can execute, based
 
 ## Orchestration model: Feature Workflow
 
-Before starting the workflow, check to make sure you are not on the main branch, and that you can push on the branch you are on. If you fail this test, pause and ask the developer how you should proceed, and then select or create a branch as instructed before starting the first task.
+Before starting the workflow, check the current branch. If you are on `main`, create and switch to an appropriately named branch for the issue or feature (for example, `feature/<issue-number>-<short-description>`) before starting the first task; do not pause merely because you are on `main`. Confirm that you can push the working branch, setting its upstream when first pushed. If branch creation or push access fails, pause and ask the developer how to proceed.
 
 Now orchestrate all Pending Tasks as outlined below. Use an **orchestration agent** that spawns a **fresh agent per task**:
 
