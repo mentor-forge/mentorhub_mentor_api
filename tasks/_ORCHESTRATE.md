@@ -10,11 +10,13 @@ Before starting the workflow, check the current branch. If you are on `main`, cr
 
 Now orchestrate all Pending Tasks as outlined below. Use an **orchestration agent** that spawns a **fresh agent per task**:
 
+**Context and model selection**: Use a fresh sub-agent for each task to keep its context focused and prevent prior task history from accumulating. Give it the task file, relevant repository instructions and context references, and a concise summary of prerequisite results; do not pass the entire orchestration conversation by default. Where the tool supports model selection, prefer a lower-cost or faster model that can reliably complete the task, and use a more capable model for complex reasoning or unresolved failures. If model selection is unavailable, use the available model while retaining task isolation. Return a concise summary of changed files, validation results and blockers to the orchestrator, which retains responsibility for review, integration and commits.
+
 1. **Orchestrator** discovers all tasks, respects dependencies, and determines execution order.
    - **Task Selection**: Select only `PENDING.*` tasks.
    - **Execution order**: Review all PENDING tasks and order dependencies first.
    - Do not schedule **concurrent** agents to avoid testing collisions.
-2. **For each task**, the orchestrator selects the least expensive model that can provide good results. Many tasks will not need high reasoning models. Prefer default models. Then, launch a new agent with:
+2. **For each task**, the orchestrator selects a suitable available model using the guidance above and launches a fresh sub-agent with:
    - The task file path
    - Any outputs from prior tasks (e.g. "L010 complete; Profile schema updated in openapi.yaml")
 3. **Sub-agent** executes only that task: read context, implement, test, update task notes.
