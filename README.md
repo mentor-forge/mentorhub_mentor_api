@@ -3,7 +3,7 @@
 ## Prerequisites
 - Mentor Hub [Developers Edition](https://github.com/mentor-forge/mentorhub/blob/main/CONTRIBUTING.md)
 - Developer [API Standard Prerequisites](https://github.com/mentor-forge/mentorhub/blob/main/DeveloperEdition/standards/api_standards.md)
-- Dependency: `api-utils==1.0.3` (pinned in `Pipfile` via CodeArtifact)
+- Dependency: API Utils 1.0.5 (pinned to its public GitHub Release wheel in `Pipfile`). Other Python dependencies come from PyPI.
 - Flask token dict key is `display_name` (JWT wire claim remains OIDC `name`). `create_flask_token()` / `GET /api/config` `token` expose `display_name` and omit application-dict `name`.
 
 ## Ownership
@@ -29,7 +29,7 @@ Do **not** reimplement shared list/get outbound filters locally. Do **not** pass
 ## Developer Commands
 
 ```bash
-## Install dependencies (run `mh` first for CodeArtifact auth)
+## Install dependencies from the committed lockfile
 pipenv run install
 
 # start backing db container 

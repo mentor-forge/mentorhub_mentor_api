@@ -1,4 +1,4 @@
-# Stage 1: Build - install deps from CodeArtifact (PIP_INDEX_URL) and compile
+# Stage 1: Build - install locked dependencies and compile
 FROM python:3.12-slim AS build
 
 WORKDIR /app
@@ -7,9 +7,8 @@ RUN pip install --no-cache-dir pipenv
 
 COPY Pipfile Pipfile.lock ./
 
-ARG PIP_INDEX_URL
-RUN pipenv requirements | grep -v '^-i ' > requirements.txt && \
-    pip install --no-cache-dir --index-url "${PIP_INDEX_URL}" -r requirements.txt && \
+RUN pipenv requirements --hash > requirements.txt && \
+    pip install --no-cache-dir --require-hashes -r requirements.txt && \
     pip install --no-cache-dir gunicorn
 
 COPY src/ ./src/

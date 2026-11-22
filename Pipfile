@@ -1,14 +1,14 @@
 [[source]]
-url = "https://mentor-forge-560167829275.d.codeartifact.us-east-1.amazonaws.com/pypi/mentorhub-pypi/simple/"
+url = "https://pypi.org/simple"
 verify_ssl = true
-name = "codeartifact"
+name = "pypi"
 
 [packages]
 flask = "*"
 pymongo = "*"
 pyjwt = "*"
-# Must use codeartifact index: PyPI package "api-utils" is unrelated; wrong index breaks Config/auth.
-api-utils = {version = "==1.0.4", index = "codeartifact"}
+# The public PyPI package named api-utils is unrelated.
+api-utils = {file = "https://github.com/mentor-forge/mentorhub_api_utils/releases/download/v1.0.5/api_utils-1.0.5-py3-none-any.whl#sha256=79de3829e2baa294497e08925908645bcea53cdf497d02b6bed71322a503d952"}
 
 [dev-packages]
 pytest = "*"
@@ -20,7 +20,7 @@ twine = "*"
 requests = "*"
 
 [scripts]
-install = "sh scripts/pipenv-install.sh"
+install = "pipenv sync --dev"
 build = "python -m compileall -b -f -q src/"
 dev = "sh -c 'export JWT_SECRET=\"${JWT_SECRET:-local-dev-jwt-secret-fixed}\"; export JWT_ISSUER=\"${JWT_ISSUER:-dev-idp}\"; export JWT_AUDIENCE=\"${JWT_AUDIENCE:-dev-api}\"; export JWT_ALGORITHM=\"${JWT_ALGORITHM:-HS256}\"; PYTHONPATH=. python src/server.py'"
 test = "sh -c 'PYTHONPATH=. pytest test/ -v -m \"not e2e\"'"
