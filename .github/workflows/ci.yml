@@ -1,0 +1,38 @@
+name: Validate Mentor API
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install locked dependencies
+        run: |
+          python -m pip install pipenv
+          pipenv verify
+          pipenv sync --dev
+
+      - name: Lint, test, and compile
+        run: |
+          pipenv run lint
+          pipenv run test
+          pipenv run build
+
+      - name: Build container
+        run: MENTOR_API_IMAGE=mentorhub-mentor-api:ci pipenv run container
