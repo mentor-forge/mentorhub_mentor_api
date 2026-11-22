@@ -14,9 +14,19 @@ API runs on port 8391 (same for dev and api).
 import pytest
 import requests
 
-from .e2e_auth import get_auth_token
+from .e2e_auth import get_auth_token, mint_token
 
 BASE_URL = "http://localhost:8391"
+
+
+def _dashboard_mentor_token():
+    # Marti is a seeded Developer Edition mentor with assigned mentees.
+    return mint_token(
+        sub="marti",
+        roles=("mentor",),
+        profile_id="A00000000000000000000006",
+        name="Marti Lombardi",
+    )
 
 
 def _err(response, expected):
@@ -28,7 +38,7 @@ def _err(response, expected):
 @pytest.mark.e2e
 def test_get_profiles_endpoint():
     """Test GET /api/profile returns the Mentor Dashboard array."""
-    token = get_auth_token()
+    token = _dashboard_mentor_token()
     headers = {"Authorization": f"Bearer {token}"}
     response = requests.get(f"{BASE_URL}/api/profile", headers=headers)
     assert response.status_code == 200, _err(response, 200)
@@ -37,6 +47,7 @@ def test_get_profiles_endpoint():
     assert isinstance(
         response_data, list
     ), "Response should be a list of dashboard cards"
+    assert response_data, "Seeded mentor should have dashboard cards"
     for card in response_data:
         assert "_id" in card, "Each card should have an '_id'"
         assert "name" in card, "Each card should have a 'name'"
@@ -53,18 +64,21 @@ def test_get_profiles_endpoint():
 @pytest.mark.e2e
 def test_get_profile_detail_returns_composite():
     """GET /api/profile/<id> returns the {profile, mentee, encounters} composite."""
-    token = get_auth_token()
+    token = _dashboard_mentor_token()
     headers = {"Authorization": f"Bearer {token}"}
 
     # Resolve a real mentee id from the dashboard list.
     list_response = requests.get(f"{BASE_URL}/api/profile", headers=headers)
     assert list_response.status_code == 200, _err(list_response, 200)
     cards = list_response.json()
-    if not cards:
-        pytest.skip("No mentees available to exercise the profile detail view")
+    assert cards, "Seeded mentor should have dashboard cards"
 
     profile_id = cards[0]["_id"]
-    response = requests.get(f"{BASE_URL}/api/profile/{profile_id}", headers=headers)
+    # Keep the composite check on the original privileged test persona.
+    admin_headers = {"Authorization": f"Bearer {get_auth_token()}"}
+    response = requests.get(
+        f"{BASE_URL}/api/profile/{profile_id}", headers=admin_headers
+    )
     assert response.status_code == 200, _err(response, 200)
 
     detail = response.json()
@@ -99,14 +113,13 @@ def test_profile_endpoints_require_auth():
 @pytest.mark.e2e
 def test_get_profile_properties_endpoint():
     """Test GET /api/profile/<id>/properties returns aggregated Properties hub."""
-    token = get_auth_token()
+    token = _dashboard_mentor_token()
     headers = {"Authorization": f"Bearer {token}"}
 
     list_response = requests.get(f"{BASE_URL}/api/profile", headers=headers)
     assert list_response.status_code == 200, _err(list_response, 200)
     cards = list_response.json()
-    if not cards:
-        pytest.skip("No mentee cards on dashboard; cannot test properties")
+    assert cards, "Seeded mentor should have dashboard cards"
 
     profile_id = cards[0]["_id"]
     response = requests.get(

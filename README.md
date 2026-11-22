@@ -33,7 +33,7 @@ Do **not** reimplement shared list/get outbound filters locally. Do **not** pass
 pipenv run install
 
 # start backing db container 
-# Container Related commands use `de down` before starting the requested containers
+# Container commands use `mh down` before starting the requested containers
 pipenv run db
 
 ## run unit tests 
@@ -67,6 +67,19 @@ pipenv run format
 pipenv run lint
 ```
 
+## Package sources and rollback
+
+The locked install uses PyPI for third-party Python packages and the pinned public
+GitHub Release wheel for Mentor Hub API Utils. The local install, Docker build,
+and pull request checks require network access to those sources. GitHub Actions
+publishes the application image to GHCR after changes land on main.
+
+When updating API Utils, use the exact URL of a reviewed release wheel, regenerate
+the lockfile, and validate the install and packaged API against Developer Edition
+test data. To roll back an API Utils upgrade, restore the previous approved
+`Pipfile` and `Pipfile.lock` together and rebuild. To roll back a deployed image,
+redeploy the previous approved GHCR image digest.
+
 ## Project Structure
 
 - `src/` - Main package containing:
@@ -83,7 +96,7 @@ pipenv run lint
 
 see the [Open API Specifications](./docs/openapi.yaml) for details on the API
 
-For E2E, mint a Bearer token via `test/e2e/e2e_auth.py` (`get_auth_token()` / `mint_token(...)`) with `pipenv run dev` (matching `JWT_SECRET`). Personas mint the OIDC JWT `name` claim; api-utils 1.0.2 maps that into Flask-token `display_name`. Prefer least-privilege personas for outbound RBAC cases; the default token is admin+mentor for privileged write paths.
+For E2E, mint a Bearer token via `test/e2e/e2e_auth.py` (`get_auth_token()` / `mint_token(...)`) with `pipenv run dev` (matching `JWT_SECRET`). Personas mint the OIDC JWT `name` claim; API Utils maps that into Flask-token `display_name`. Prefer least-privilege personas for outbound RBAC cases; the default token is admin+mentor for privileged write paths.
 
 ### Simple Curl Commands:
 ```bash
