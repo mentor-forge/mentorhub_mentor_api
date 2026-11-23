@@ -31,10 +31,15 @@ jobs:
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Set build timestamp
+        id: build_stamp
+        run: date -u +'built_at=%Y%m%d-%H%M%S' >> "$GITHUB_OUTPUT"
+
       - name: Build and push
         uses: docker/build-push-action@v5
         with:
           context: .
           platforms: linux/amd64,linux/arm64
+          build-args: BUILT_AT=${{ steps.build_stamp.outputs.built_at }}
           push: true
           tags: ghcr.io/mentor-forge/mentorhub_mentor_api:latest

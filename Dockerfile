@@ -14,7 +14,6 @@ RUN pipenv requirements --hash > requirements.txt && \
 COPY src/ ./src/
 COPY docs/ ./docs/
 
-RUN DATE=$(date +'%Y%m%d-%H%M%S') && echo "${DATE}" > /app/BUILT_AT
 RUN python -m compileall -b -f -q src/
 
 # Stage 2: Production - no tokens; copy installed packages from build
@@ -27,7 +26,8 @@ WORKDIR /opt/api_server
 COPY --from=build /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
 COPY --from=build /app/src/ ./src/
 COPY --from=build /app/docs/ ./docs/
-COPY --from=build /app/BUILT_AT ./
+ARG BUILT_AT=LOCAL
+RUN printf '%s\n' "$BUILT_AT" > BUILT_AT
 
 ENV PYTHONPATH=/opt/api_server
 ENV PYTHONDONTWRITEBYTECODE=1

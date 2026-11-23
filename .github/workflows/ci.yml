@@ -35,4 +35,9 @@ jobs:
           pipenv run build
 
       - name: Build container
-        run: MENTOR_API_IMAGE=mentorhub-mentor-api:ci pipenv run container
+        env:
+          MENTOR_API_IMAGE: mentorhub-mentor-api:ci
+        run: |
+          export BUILT_AT="$(date -u +'%Y%m%d-%H%M%S')"
+          pipenv run container
+          test "$(docker run --rm --entrypoint cat "$MENTOR_API_IMAGE" /opt/api_server/BUILT_AT)" = "$BUILT_AT"
